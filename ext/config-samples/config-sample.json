@@ -1,0 +1,30 @@
+{
+    "files": [
+        {
+            "section": "common",
+            "paths": [
+                "d:/logs/L50/*/*.log",
+                "d:/logs/L60/L*/*.log",
+                "d:/logs/L70/*.log"
+            ],
+            "fields": {
+                "type": "1ctj"
+            }
+        },
+        {
+            "section": "test",
+            "paths": [
+                "d:/logs/L50/*.log"
+            ],
+            "fields": {
+                "type": "test"
+            },
+            "filter": {
+                "property": "WaitConnections[?]",
+                "pattern": ".+",
+                "if-not-exists": "true"
+            }
+        }
+    ],
+    "1c servers": []
+}

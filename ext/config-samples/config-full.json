@@ -1,0 +1,158 @@
+{
+  "files": [
+    {
+      "section": "VENUS_Perfomance_Counters",
+      "paths": [
+        "e:\\logs\\PerfMon\\**\\*.tsv"
+      ],
+      "fields": null,
+      "filter": null,
+      "encoding": "Windows-1251",
+      "dead time": "24h"
+    }
+  ],
+  "1c servers": [
+    {
+      "address": "VENUS",
+      "central": true,
+      "files": [
+        {
+          "section": "MONITOR-DEV_1541_Transactions",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\Transactions\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": null,
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        },
+        {
+          "section": "MONITOR-DEV_1541_1C_Victims",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\1C_Locks\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": {
+            "property": "WaitConnections[?]",
+            "pattern": ".+",
+            "negate": false,
+            "operation": "like",
+            "if-not-exists": false
+          },
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        },
+        {
+          "section": "MONITOR-DEV_1541_1C_Culprits",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\1C_Locks\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": null,
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        },
+        {
+          "section": "MONITOR-DEV_1541_SQL_Locks_Victims",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\SQL_Locks\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": {
+            "and": [
+              {
+                "property": "duration",
+                "pattern": "5000000",
+                "negate": false,
+                "operation": "n>=",
+                "if-not-exists": false
+              },
+              {
+                "property": "lkp",
+                "pattern": "1",
+                "negate": false,
+                "operation": "n=",
+                "if-not-exists": false
+              }
+            ]
+          },
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        },
+        {
+          "section": "MONITOR-DEV_1541_SQL_Locks_VictimsNoLkp",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\SQL_Locks\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": {
+            "and": [
+              {
+                "property": "duration",
+                "pattern": "5000000",
+                "negate": false,
+                "operation": "n>=",
+                "if-not-exists": false
+              },
+              {
+                "property": "lkp",
+                "pattern": "1",
+                "negate": false,
+                "operation": "n=",
+                "if-not-exists": true
+              }
+            ]
+          },
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        },
+        {
+          "section": "MONITOR-DEV_1541_SQL_Locks_Culprits",
+          "paths": [
+            "e:\\logs\\MonitorLogs\\MonitorLogs\\MONITOR-DEV_1541\\SQL_Locks\\rphost_*\\*.log"
+          ],
+          "fields": null,
+          "filter": null,
+          "encoding": "UTF-8",
+          "dead time": "24h"
+        }
+      ],
+      "administrators": [
+        {
+          "login": "",
+          "password": ""
+        }
+      ],
+      "clusters": [
+        {
+          "name": "LOCAL",
+          "address": null,
+          "port": 1541,
+          "id": "LOCAL",
+          "servers": null,
+          "administrators": [
+            {
+              "login": "admin",
+              "password": "pass"
+            },
+            {
+              "login": "",
+              "password": ""
+            }
+          ],
+          "bases": [
+            {
+              "name": "MONITOR-DEV",
+              "id": "MONITOR-DEV"
+            }
+          ]
+        }
+      ],
+      "id": "VENUS:1540",
+      "port": 1540,
+      "ras port": 1545,
+      "ras address": "VENUS",
+      "logcfg path": "c:\\Program Files\\1cv8\\conf\\logcfg.xml"
+    }
+  ]
+}
