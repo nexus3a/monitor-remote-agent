@@ -47,7 +47,7 @@ public class ExecQueryHandler extends DefaultResponder {
 
     private static final int QUERY_EXEC_TIMEOUT = 10 * 60 * 1000; // 10 минут
 
-    private static boolean extract(String src, String dest) {
+    private static boolean extractFromJar(String src, String dest) {
         File destFile = new File(dest);
         if (destFile.exists() && destFile.length() > 0) {
             return true;
@@ -107,7 +107,7 @@ public class ExecQueryHandler extends DefaultResponder {
                     System.getProperty("os.arch").toLowerCase().contains("64")
                     ? "mssql-jdbc_auth-12.4.1.x64"
                     : "mssql-jdbc_auth-12.4.1.x86";
-            if (extract("mssql-jdbc-auth-lib/" + JDBCA + ".dll", "./" + JDBCA + ".dll")) {
+            if (extractFromJar("mssql-jdbc-auth-lib/" + JDBCA + ".dll", "./" + JDBCA + ".dll")) {
                 try { System.loadLibrary(JDBCA); } catch (Exception | Error ex) {}
             }
         }
