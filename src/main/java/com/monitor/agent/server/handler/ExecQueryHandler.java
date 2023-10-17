@@ -23,7 +23,13 @@ import com.monitor.agent.server.piped.ParserPipedStream;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import fi.iki.elonen.router.RouterNanoHTTPD;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -34,11 +40,78 @@ import java.sql.Statement;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.jar.JarFile;
 import org.postgresql.util.PGobject;
 
 public class ExecQueryHandler extends DefaultResponder {
-    
+
     private static final int QUERY_EXEC_TIMEOUT = 10 * 60 * 1000; // 10 минут
+
+    private static boolean extract(String src, String dest) {
+        File destFile = new File(dest);
+        if (destFile.exists() && destFile.length() > 0) {
+            return true;
+        }
+        try (
+                JarFile jarFile = new JarFile("monitor-remote-agent.jar");
+                InputStream in = jarFile.getInputStream(jarFile.getEntry(src));
+                OutputStream out = new BufferedOutputStream(new FileOutputStream(dest))) {
+            byte[] buffer = new byte[1024];
+            int lengthRead;
+            while ((lengthRead = in.read(buffer)) > 0) {
+                out.write(buffer, 0, lengthRead);
+                out.flush();
+            }
+            return true;
+        }
+        catch (IOException ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    private static void appendToLibraryPath(String dir) {
+
+        String path = System.getProperty("java.library.path");
+        String lpath = path.toLowerCase();
+        String ldir = dir.toLowerCase();
+        if (lpath.equals(ldir) 
+                || lpath.startsWith(ldir + ";") 
+                || lpath.endsWith(";" + ldir) 
+                || lpath.contains(";" + ldir + ";")) {
+            return;
+        }
+        path = dir + ";" + path;
+        System.setProperty("java.library.path", path);
+
+        // https://stackoverflow.com/questions/23189776/load-native-library-from-class-path
+        //
+        try {
+            final Field sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
+            sysPathsField.setAccessible(true);
+            sysPathsField.set(null, null);
+        }
+        catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+
+    }
+    
+    static {
+        // загружаем dll для возможности выполненния нативного кода windows-авторизации
+        // в jdbc-драйвере для MS SQL Server
+        //
+        if (System.getProperty("os.name").toLowerCase().startsWith("windows")) {
+            try { appendToLibraryPath("."); } catch (Exception | Error ex) {}
+            final String JDBCA = 
+                    System.getProperty("os.arch").toLowerCase().contains("64")
+                    ? "mssql-jdbc_auth-12.4.1.x64"
+                    : "mssql-jdbc_auth-12.4.1.x86";
+            if (extract("mssql-jdbc-auth-lib/" + JDBCA + ".dll", "./" + JDBCA + ".dll")) {
+                try { System.loadLibrary(JDBCA); } catch (Exception | Error ex) {}
+            }
+        }
+    }
 
     @Override
     @SuppressWarnings({"Convert2Lambda", "UseSpecificCatch"})
@@ -61,7 +134,7 @@ public class ExecQueryHandler extends DefaultResponder {
             (new Thread() {
                 @Override
                 public void run() {
-                    
+
                     ObjectMapper mapper = new ObjectMapper();
 
                     ParserPipedOutputStream output = pipe.getOutput();
@@ -70,7 +143,7 @@ public class ExecQueryHandler extends DefaultResponder {
                     Connection conn = null;
                     Statement stmt = null;
                     Exception fatal = null;
-                    
+
                     try {
                         RequestParameters parameters = getParameters();
 
@@ -112,7 +185,7 @@ public class ExecQueryHandler extends DefaultResponder {
                         // каждый результат, в свою очередь, тоже массив объектов записей результата запроса
                         // ([{поле_0:значение_0, ...}, ..., {поле_M:значение_M, ...}]), или массив из одного 
                         // элемента, если это запрос на обновление данных или иной не-SELECT ([{affected:значение}])
-
+                        
                         boolean isResultSet = stmt.execute(queryString);
 
                         output.write("[\n".getBytes(StandardCharsets.UTF_8));
@@ -188,13 +261,13 @@ public class ExecQueryHandler extends DefaultResponder {
                     try { if (resultSet != null) resultSet.close(); } catch (SQLException e) {}
                     try { if (stmt != null)      stmt.close(); }      catch (SQLException e) {}
                     try { if (conn != null)      conn.close(); }      catch (SQLException e) {}
-                    
+
                     if (fatal != null) {
                         System.err.print(new Date());
                         fatal.printStackTrace();
                         try { output.write(fatal.getMessage().getBytes(StandardCharsets.UTF_8)); } catch (Exception e) {}
                     }
-                    
+
                     try {
                         pipe.close(); // закрывается при закрытии output, а output закрывает chunkedResponse
                     }
@@ -206,7 +279,7 @@ public class ExecQueryHandler extends DefaultResponder {
 
         }
         catch (Exception ex) {
-            
+
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.BAD_REQUEST,
                     NanoHTTPD.MIME_PLAINTEXT,

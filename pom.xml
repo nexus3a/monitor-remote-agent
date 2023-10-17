@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>monitor-remote-agent</groupId>
     <artifactId>monitor-remote-agent</artifactId>
-    <version>2.5.1-SNAPSHOT</version>
+    <version>2.5.8</version>
     <name>monitor-remote-agent</name>
     <description>Remote agent for Monitor-analyzer</description>
     <url>https://1smonitor.ru</url>
@@ -78,26 +78,26 @@
             <scope>test</scope>
         </dependency>
 
- <!--
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-api</artifactId>
-    <version>2.20.0</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-core</artifactId>
-    <version>2.20.0</version>
-  </dependency>
--->
-
-<!--
-  <dependency>
+         <!--
+          <dependency>
             <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-1.2-api</artifactId>
+            <artifactId>log4j-api</artifactId>
             <version>2.20.0</version>
-        </dependency>
--->
+          </dependency>
+          <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.20.0</version>
+          </dependency>
+        -->
+
+        <!--
+          <dependency>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-1.2-api</artifactId>
+                    <version>2.20.0</version>
+                </dependency>
+        -->
         <dependency>
             <groupId>log4j</groupId>
             <artifactId>log4j</artifactId>
@@ -163,7 +163,7 @@
         <dependency>
             <groupId>com.microsoft.sqlserver</groupId>
             <artifactId>mssql-jdbc</artifactId>
-            <version>12.2.0.jre8</version>
+            <version>12.4.1.jre8</version>
         </dependency>
     </dependencies>
 </project>
