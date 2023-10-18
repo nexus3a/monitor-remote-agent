@@ -46,6 +46,7 @@ import org.postgresql.util.PGobject;
 public class ExecQueryHandler extends DefaultResponder {
 
     private static final int QUERY_EXEC_TIMEOUT = 10 * 60 * 1000; // 10 минут
+    private static boolean MSSQL_AUTH_LIB_LOADED = false;
 
     private static boolean extractFromJar(String src, String dest) {
         File destFile = new File(dest);
@@ -97,22 +98,25 @@ public class ExecQueryHandler extends DefaultResponder {
 
     }
     
-    static {
-        // загружаем dll для возможности выполненния нативного кода windows-авторизации
-        // в jdbc-драйвере для MS SQL Server
-        //
+    private static synchronized boolean loadMssqlAuthLibrary() {
+        if (MSSQL_AUTH_LIB_LOADED) {
+            return true;
+        }
+        boolean result = false;
         if (System.getProperty("os.name").toLowerCase().startsWith("windows")) {
-            try { appendToLibraryPath("."); } catch (Exception | Error ex) {}
             final String JDBCA = 
                     System.getProperty("os.arch").toLowerCase().contains("64")
                     ? "mssql-jdbc_auth-12.4.1.x64"
                     : "mssql-jdbc_auth-12.4.1.x86";
             if (extractFromJar("mssql-jdbc-auth-lib/" + JDBCA + ".dll", "./" + JDBCA + ".dll")) {
-                try { System.loadLibrary(JDBCA); } catch (Exception | Error ex) {}
+                try { appendToLibraryPath("."); } catch (Exception | Error ex) {}
+                try { System.loadLibrary(JDBCA); result = true; } catch (Exception | Error ex) {}
             }
         }
+        MSSQL_AUTH_LIB_LOADED = result;
+        return result;
     }
-
+    
     @Override
     @SuppressWarnings({"Convert2Lambda", "UseSpecificCatch"})
     public NanoHTTPD.Response get(
@@ -161,10 +165,14 @@ public class ExecQueryHandler extends DefaultResponder {
 
                         // принудительная загрузка класса, по идее, в новых версиях драйверов не требуется,
                         // но для Java старых версий это не работает, поэтому принудительно загружаем класс
-                        // с драйвером СУБД
+                        // с драйвером СУБД;
+                        // для sqlserver дополнительно загружаем библиотеку для windows-авторизации
                         //
                         if (connString.contains("sqlserver")) {
                             Class.forName("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+                            if (connString.toLowerCase().contains("integratedsecurity=true")) {
+                                loadMssqlAuthLibrary();
+                            }
                         }
                         else if (connString.contains("postgresql")) {
                             Class.forName("org.postgresql.Driver");
