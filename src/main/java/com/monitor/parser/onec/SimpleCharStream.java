@@ -163,6 +163,7 @@ public class SimpleCharStream {
     public char BeginToken() throws java.io.IOException {
         tokenBegin = -1;
         tokenLen = 0;
+        xtraBegin = 0;
         char c = readChar();
         tokenBegin = bufpos;
 
@@ -225,6 +226,10 @@ public class SimpleCharStream {
 
         if (++bufpos >= maxNextCharInd) {
             FillBuff();               // прочитали всё, что раньше заполнили в буфере, нужно подчитать в буфер из потока
+        }
+        
+        if (tokenLen == MAX_TOKEN_LENGTH && xtraBegin == 0) {
+            xtraBegin = bufpos;
         }
 
         char c = buffer[bufpos];
@@ -357,6 +362,7 @@ public class SimpleCharStream {
         tokenBegin = inBuf = maxNextCharInd = 0;
         bufpos = -1;
         tokenLen = 0;
+        xtraBegin = 0;
     }
 
     /**
