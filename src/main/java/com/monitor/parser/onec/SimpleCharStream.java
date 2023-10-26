@@ -8,38 +8,39 @@ package com.monitor.parser.onec;
  */
 public class SimpleCharStream {
 
-    /**
-     * Whether parser is static.
-     */
-    public static final boolean staticFlag = false;
+    public static final boolean staticFlag = false; // является ли парсер статическим
     private static final int BUFF_INCREMENT = 1024 * 128; // * 128; // == 131072, было 1024 * 2 == 2048
     private static final int MAX_TOKEN_LENGTH = 1024 * 4; // максимальное количество символов в токене
-    int bufsize;
-    int available;
-    int tokenBegin;
-    /**
-     * Position in buffer.
-     */
-    public int bufpos = -1;
-    protected int bufline[];
-    protected int bufcolumn[];
+    
+    int tokenBegin; // позиция в буфере, с которой начинаются данные текущего токена
+    int available; // позиция в буфере, до которой можно заполнять буфер, чтобы не затереть данные текущего токена в буфере
+    protected int maxNextCharInd = 0; // позиция в буфере, до которой заполнены данные из потока; maxNextCharInd <= available
+
+    public int bufpos = -1; // позиция внутри буфера
+    protected int bufline[]; // буефер номеров строк
+    protected int bufcolumn[]; // буфер номеров колонок
 
     protected long bytesRead = 0; // сколько всего эффективно прочитано байт с момента начала чтения (не в буфер)
     protected boolean bytePerChar = false; // true для кодировок, отличных от utf-8, utf-16 (один байт на символ)
 
-    protected int column = 0;
-    protected int line = 1;
+    protected int column = 0; // текущая колонка в файле
+    protected int line = 1; // текущая строка файла
 
     protected boolean prevCharIsCR = false;
     protected boolean prevCharIsLF = false;
 
-    protected java.io.Reader inputStream;
+    protected java.io.Reader inputStream; // поток, из которого читаются данные через буфер
 
-    protected char[] buffer;
-    protected int maxNextCharInd = 0;
-    protected int inBuf = 0;
-    protected int tabSize = 1;
-    protected boolean trackLineColumn = true;
+    protected char[] buffer; // рабочий буфер с символами
+    int bufsize; // размер рабочего буфера
+    
+    protected int inBuf = 0; // количество байт, ранее прочитанных из потока, находящихся перед bufPos (после отката назад)
+    protected int tabSize = 1; // размер табуляции в символах для вычисления номера колонки в файле
+    
+    
+    int xtraBegin; // позиция в буфере, с которой начинаются данные, которые могут быть сокращены в токене при достижении лимита
+    int tokenLen; // сколько прочитано символов с начала токена
+    
 
     public void setTabSize(int i) {
         tabSize = i;
@@ -68,7 +69,7 @@ public class SimpleCharStream {
                 System.arraycopy(bufcolumn, 0, newbufcolumn, bufsize - tokenBegin, bufpos);
                 bufcolumn = newbufcolumn;
 
-                maxNextCharInd = (bufpos += (bufsize - tokenBegin));
+                bufpos += (bufsize - tokenBegin);
             }
             else {
                 System.arraycopy(buffer, tokenBegin, newbuffer, 0, bufsize - tokenBegin);
@@ -80,7 +81,7 @@ public class SimpleCharStream {
                 System.arraycopy(bufcolumn, tokenBegin, newbufcolumn, 0, bufsize - tokenBegin);
                 bufcolumn = newbufcolumn;
 
-                maxNextCharInd = (bufpos -= tokenBegin);
+                bufpos -= tokenBegin;
             }
         }
         catch (Throwable t) {
@@ -88,50 +89,66 @@ public class SimpleCharStream {
         }
 
         bufsize += BUFF_INCREMENT;
-        available = bufsize;
-        tokenBegin = 0;
     }
 
-    protected void FillBuff() throws java.io.IOException {
-        if (maxNextCharInd == available) {
-            if (available == bufsize) {
-                if (tokenBegin > BUFF_INCREMENT) {
-                    bufpos = maxNextCharInd = 0;
-                    available = tokenBegin;
+    protected void FillBuff() throws java.io.IOException {             // срабатывает, когда bufpos >= maxNextCharInd
+        
+    //    ,------------ 1. available -------------.
+    //   /   3. bufpos                             \
+    //  |--------X---------------------+------------| buffer
+    //   \                             /
+    //    `---- 2. maxNextCharInd ----`
+    //
+    // 1. определяется available - сколько и где можно заполнять данные в буфере (до или после начала токена)
+    // 2. заполняются данные в выбранной области из потока; данных в потоке может быть меньше, чем можно поместить
+    //    в буфер в зону available, при следующем подчитывании из потока осташаяся область будет заполняться
+    // 3. bufpos ползает по заполненным данным
+    
+    
+        if (maxNextCharInd == available) {                             // уже заполнили по максимуму оставшееся ранее место - не важно - до конца буфера или до начала токена
+            if (available == bufsize) {                                // режим работы с буфером "читаем до конца буфера"
+                if (tokenBegin > BUFF_INCREMENT) {                     // закольцовываем данные:
+                    bufpos = maxNextCharInd = 0;                       // - заполнение будет с начала буфера порцией BUFF_INCREMENT байт
+                    available = tokenBegin;                            // - дочитывать можно будет не дальше, чем начало токена, с начала буфера, включается режим работы с буфером "дочитываем до начала токена"
                 }
-                else if (tokenBegin < 0) {
-                    bufpos = maxNextCharInd = 0;
+                else if (tokenBegin < 0) {                             // после BeginToken() в случае, когда bufpos в конце заполненных ранее данных
+                    bufpos = maxNextCharInd = 0;                       // новый токен по стечению обстоятельств начнётся с начала буфера
                 }
-                else {
-                    ExpandBuff(false);
+                else {                                                 // tokenBegin <= BUFF_INCREMENT - слева от начала токена мало места для дозаполнения
+                    ExpandBuff(false);                                 // увеличиваем буфер сдвигом влево от начала токена, затирая всё, что до начала токена
+                    available = bufsize;                               // остаёмся в режиме "читаем до конца буфера"
+                    maxNextCharInd = bufpos;
+                    tokenBegin = 0;                                    // токен находится теперь с начала буфера
                 }
             }
-            else if (available > tokenBegin) {
-                available = bufsize;
+            else if (available > tokenBegin) {                         // после BeginToken() в случае, когда bufpos ещё не добрался до конца заполненных ранее данных
+                available = bufsize;                                   // продолжим работать в режиме "читаем до конца буфера"
             }
-            else if ((tokenBegin - available) < BUFF_INCREMENT) {
-                ExpandBuff(true);
+            else if ((tokenBegin - available) < BUFF_INCREMENT) {      // мы слева от начала токена, до начала токена осталось место, но слишком мало - расширим буфер
+                ExpandBuff(true);                                      // увеличиваем буфер сдвигом влево от начала токена, перемщая всё, что до начала токена вправо
+                available = bufsize;                                   // будем работать в режиме "читаем до конца буфера"
+                maxNextCharInd = bufpos;
+                tokenBegin = 0;                                        // токен находится теперь с начала буфера
             }
             else {
-                available = tokenBegin;
+                available = tokenBegin;                                // можем заполнить буфер аж до начала токена без расширения буфера - места много
             }
         }
 
-        int i;
         try {
-            if ((i = inputStream.read(buffer, maxNextCharInd, available - maxNextCharInd)) == -1) {
+            int i;
+            if ((i = inputStream.read(buffer, maxNextCharInd, available - maxNextCharInd)) == -1) {  // заполняем буфер от maxNextCharInd до конца свободной области available данными из потока насколько хватает данных в нём
                 inputStream.close();
                 throw new java.io.IOException();
             }
             else {
                 maxNextCharInd += i;
             }
-            return;
         }
         catch (java.io.IOException e) {
             --bufpos;
             backup(0);
-            if (tokenBegin == -1) {
+            if (tokenBegin == -1) { // после BeginToken()
                 tokenBegin = bufpos;
             }
             throw e;
@@ -140,9 +157,12 @@ public class SimpleCharStream {
 
     /**
      * Start.
+     * @return 
+     * @throws java.io.IOException
      */
     public char BeginToken() throws java.io.IOException {
         tokenBegin = -1;
+        tokenLen = 0;
         char c = readChar();
         tokenBegin = bufpos;
 
@@ -187,20 +207,24 @@ public class SimpleCharStream {
 
     /**
      * Read a character.
+     * @return 
+     * @throws java.io.IOException
      */
     public char readChar() throws java.io.IOException {
+        tokenLen++;
+        
         if (inBuf > 0) {
             --inBuf;
 
             if (++bufpos == bufsize) {
-                bufpos = 0;
+                bufpos = 0;           // закольцовываем указатель
             }
-
+            
             return buffer[bufpos];
         }
 
         if (++bufpos >= maxNextCharInd) {
-            FillBuff();
+            FillBuff();               // прочитали всё, что раньше заполнили в буфере, нужно подчитать в буфер из потока
         }
 
         char c = buffer[bufpos];
@@ -226,26 +250,9 @@ public class SimpleCharStream {
         return c;
     }
 
-    @Deprecated
-    /**
-     * @deprecated @see #getEndColumn
-     */
-
-    public int getColumn() {
-        return bufcolumn[bufpos];
-    }
-
-    @Deprecated
-    /**
-     * @deprecated @see #getEndLine
-     */
-
-    public int getLine() {
-        return bufline[bufpos];
-    }
-
     /**
      * Get token end column number.
+     * @return 
      */
     public int getEndColumn() {
         return bufcolumn[bufpos];
@@ -253,6 +260,7 @@ public class SimpleCharStream {
 
     /**
      * Get token end line number.
+     * @return 
      */
     public int getEndLine() {
         return bufline[bufpos];
@@ -260,6 +268,7 @@ public class SimpleCharStream {
 
     /**
      * Get token beginning column number.
+     * @return 
      */
     public int getBeginColumn() {
         return bufcolumn[tokenBegin];
@@ -267,6 +276,7 @@ public class SimpleCharStream {
 
     /**
      * Get token beginning line number.
+     * @return 
      */
     public int getBeginLine() {
         return bufline[tokenBegin];
@@ -274,6 +284,7 @@ public class SimpleCharStream {
 
     /**
      * Backup a number of characters.
+     * @param amount
      */
     public void backup(int amount) {
 
@@ -281,10 +292,15 @@ public class SimpleCharStream {
         if ((bufpos -= amount) < 0) {
             bufpos += bufsize;
         }
+        tokenLen -= amount;
     }
 
     /**
      * Constructor.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
      */
     public SimpleCharStream(java.io.Reader dstream, int startline,
             int startcolumn, int buffersize) {
@@ -300,6 +316,9 @@ public class SimpleCharStream {
 
     /**
      * Constructor.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
      */
     public SimpleCharStream(java.io.Reader dstream, int startline,
             int startcolumn) {
@@ -308,6 +327,7 @@ public class SimpleCharStream {
 
     /**
      * Constructor.
+     * @param dstream
      */
     public SimpleCharStream(java.io.Reader dstream) {
         this(dstream, 1, 1, 4096);
@@ -315,6 +335,10 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
      */
     public void ReInit(java.io.Reader dstream, int startline,
             int startcolumn, int buffersize) {
@@ -332,10 +356,14 @@ public class SimpleCharStream {
         prevCharIsLF = prevCharIsCR = false;
         tokenBegin = inBuf = maxNextCharInd = 0;
         bufpos = -1;
+        tokenLen = 0;
     }
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
      */
     public void ReInit(java.io.Reader dstream, int startline,
             int startcolumn) {
@@ -344,6 +372,7 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
      */
     public void ReInit(java.io.Reader dstream) {
         ReInit(dstream, 1, 1, 4096);
@@ -351,23 +380,39 @@ public class SimpleCharStream {
 
     /**
      * Constructor.
+     * @param dstream
+     * @param encoding
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
+     * @throws java.io.UnsupportedEncodingException
      */
     public SimpleCharStream(java.io.InputStream dstream, String encoding, int startline,
             int startcolumn, int buffersize) throws java.io.UnsupportedEncodingException {
-        this(encoding == null ? new java.io.InputStreamReader(dstream) : new java.io.InputStreamReader(dstream, encoding), startline, startcolumn, buffersize);
+        this(encoding == null 
+                ? new java.io.InputStreamReader(dstream) 
+                : new java.io.InputStreamReader(dstream, encoding), startline, startcolumn, buffersize);
         bytePerChar = encoding == null ? false : (!"utf-8".equalsIgnoreCase(encoding) && !"utf-16".equalsIgnoreCase(encoding));
     }
 
     /**
      * Constructor.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
      */
-    public SimpleCharStream(java.io.InputStream dstream, int startline,
-            int startcolumn, int buffersize) {
+    public SimpleCharStream(java.io.InputStream dstream, int startline, int startcolumn, int buffersize) {
         this(new java.io.InputStreamReader(dstream), startline, startcolumn, buffersize);
     }
 
     /**
      * Constructor.
+     * @param dstream
+     * @param encoding
+     * @param startline
+     * @param startcolumn
+     * @throws java.io.UnsupportedEncodingException
      */
     public SimpleCharStream(java.io.InputStream dstream, String encoding, int startline,
             int startcolumn) throws java.io.UnsupportedEncodingException {
@@ -376,14 +421,19 @@ public class SimpleCharStream {
 
     /**
      * Constructor.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
      */
-    public SimpleCharStream(java.io.InputStream dstream, int startline,
-            int startcolumn) {
+    public SimpleCharStream(java.io.InputStream dstream, int startline, int startcolumn) {
         this(dstream, startline, startcolumn, 4096);
     }
 
     /**
      * Constructor.
+     * @param dstream
+     * @param encoding
+     * @throws java.io.UnsupportedEncodingException
      */
     public SimpleCharStream(java.io.InputStream dstream, String encoding) throws java.io.UnsupportedEncodingException {
         this(dstream, encoding, 1, 1, 4096);
@@ -391,6 +441,7 @@ public class SimpleCharStream {
 
     /**
      * Constructor.
+     * @param dstream
      */
     public SimpleCharStream(java.io.InputStream dstream) {
         this(dstream, 1, 1, 4096);
@@ -398,22 +449,36 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param encoding
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
+     * @throws java.io.UnsupportedEncodingException
      */
     public void ReInit(java.io.InputStream dstream, String encoding, int startline,
             int startcolumn, int buffersize) throws java.io.UnsupportedEncodingException {
-        ReInit(encoding == null ? new java.io.InputStreamReader(dstream) : new java.io.InputStreamReader(dstream, encoding), startline, startcolumn, buffersize);
+        ReInit(encoding == null 
+                ? new java.io.InputStreamReader(dstream) 
+                : new java.io.InputStreamReader(dstream, encoding), startline, startcolumn, buffersize);
     }
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
+     * @param buffersize
      */
-    public void ReInit(java.io.InputStream dstream, int startline,
-            int startcolumn, int buffersize) {
+    public void ReInit(java.io.InputStream dstream, int startline, int startcolumn, int buffersize) {
         ReInit(new java.io.InputStreamReader(dstream), startline, startcolumn, buffersize);
     }
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param encoding
+     * @throws java.io.UnsupportedEncodingException
      */
     public void ReInit(java.io.InputStream dstream, String encoding) throws java.io.UnsupportedEncodingException {
         ReInit(dstream, encoding, 1, 1, 4096);
@@ -421,6 +486,7 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
      */
     public void ReInit(java.io.InputStream dstream) {
         ReInit(dstream, 1, 1, 4096);
@@ -428,6 +494,11 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param encoding
+     * @param startline
+     * @param startcolumn
+     * @throws java.io.UnsupportedEncodingException
      */
     public void ReInit(java.io.InputStream dstream, String encoding, int startline,
             int startcolumn) throws java.io.UnsupportedEncodingException {
@@ -436,14 +507,17 @@ public class SimpleCharStream {
 
     /**
      * Reinitialise.
+     * @param dstream
+     * @param startline
+     * @param startcolumn
      */
-    public void ReInit(java.io.InputStream dstream, int startline,
-            int startcolumn) {
+    public void ReInit(java.io.InputStream dstream, int startline, int startcolumn) {
         ReInit(dstream, startline, startcolumn, 4096);
     }
 
     /**
      * Get token literal value.
+     * @return 
      */
     public String GetImage() {
         if (bufpos >= tokenBegin) {
@@ -457,6 +531,8 @@ public class SimpleCharStream {
 
     /**
      * Get the suffix.
+     * @param len
+     * @return 
      */
     public char[] GetSuffix(int len) {
         char[] ret = new char[len];
@@ -465,8 +541,7 @@ public class SimpleCharStream {
             System.arraycopy(buffer, bufpos - len + 1, ret, 0, len);
         }
         else {
-            System.arraycopy(buffer, bufsize - (len - bufpos - 1), ret, 0,
-                    len - bufpos - 1);
+            System.arraycopy(buffer, bufsize - (len - bufpos - 1), ret, 0, len - bufpos - 1);
             System.arraycopy(buffer, 0, ret, len - bufpos - 1, bufpos + 1);
         }
 
@@ -484,6 +559,8 @@ public class SimpleCharStream {
 
     /**
      * Method to adjust line and column numbers for the start of a token.
+     * @param newLine
+     * @param newCol
      */
     public void adjustBeginLineColumn(int newLine, int newCol) {
         int start = tokenBegin;
@@ -497,7 +574,7 @@ public class SimpleCharStream {
         }
 
         int i = 0, j = 0, k = 0;
-        int nextColDiff = 0, columnDiff = 0;
+        int nextColDiff, columnDiff = 0;
 
         while (i < len && bufline[j = start % bufsize] == bufline[k = ++start % bufsize]) {
             bufline[j] = newLine;
@@ -525,12 +602,4 @@ public class SimpleCharStream {
         column = bufcolumn[j];
     }
 
-    boolean getTrackLineColumn() {
-        return trackLineColumn;
-    }
-
-    void setTrackLineColumn(boolean tlc) {
-        trackLineColumn = tlc;
-    }
 }
-/* JavaCC - OriginalChecksum=5c898d6b7003f278f4bfcbd39ac48cda (do not edit this line) */
