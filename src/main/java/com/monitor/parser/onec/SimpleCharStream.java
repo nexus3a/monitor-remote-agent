@@ -156,6 +156,55 @@ public class SimpleCharStream {
     }
 
     /**
+     * Read a character.
+     * @return 
+     * @throws java.io.IOException
+     */
+    public char readChar() throws java.io.IOException {
+        tokenLen++;
+        
+        if (inBuf > 0) {
+            --inBuf;
+
+            if (++bufpos == bufsize) {
+                bufpos = 0;           // закольцовываем указатель
+            }
+            
+            return buffer[bufpos];
+        }
+
+        if (++bufpos >= maxNextCharInd) {
+            FillBuff();               // прочитали всё, что раньше заполнили в буфере, нужно подчитать в буфер из потока
+        }
+        
+        if (tokenLen == MAX_TOKEN_LENGTH && xtraBegin == 0) {
+            xtraBegin = bufpos;
+        }
+
+        char c = buffer[bufpos];
+
+        if (bytePerChar)
+            bytesRead = bytesRead + 1;
+        else if (c == 0)
+            bytesRead = bytesRead + 2;
+        else if (c < 128) 
+            bytesRead = bytesRead + 1;
+        else if (c < 2048)
+            bytesRead = bytesRead + 2;
+        else if (c < 55296)
+            bytesRead = bytesRead + 3; // суррогатная пара
+        else if (c < 57344)
+            bytesRead = bytesRead + 2;
+        else if (c < 65536)
+            bytesRead = bytesRead + 3;
+        else
+            bytesRead = bytesRead + 4;
+
+        UpdateLineColumn(c);
+        return c;
+    }
+
+    /**
      * Start.
      * @return 
      * @throws java.io.IOException
@@ -204,55 +253,6 @@ public class SimpleCharStream {
 
         bufline[bufpos] = line;
         bufcolumn[bufpos] = column;
-    }
-
-    /**
-     * Read a character.
-     * @return 
-     * @throws java.io.IOException
-     */
-    public char readChar() throws java.io.IOException {
-        tokenLen++;
-        
-        if (inBuf > 0) {
-            --inBuf;
-
-            if (++bufpos == bufsize) {
-                bufpos = 0;           // закольцовываем указатель
-            }
-            
-            return buffer[bufpos];
-        }
-
-        if (++bufpos >= maxNextCharInd) {
-            FillBuff();               // прочитали всё, что раньше заполнили в буфере, нужно подчитать в буфер из потока
-        }
-        
-        if (tokenLen == MAX_TOKEN_LENGTH && xtraBegin == 0) {
-            xtraBegin = bufpos;
-        }
-
-        char c = buffer[bufpos];
-
-        if (bytePerChar)
-            bytesRead = bytesRead + 1;
-        else if (c == 0)
-            bytesRead = bytesRead + 2;
-        else if (c < 128) 
-            bytesRead = bytesRead + 1;
-        else if (c < 2048)
-            bytesRead = bytesRead + 2;
-        else if (c < 55296)
-            bytesRead = bytesRead + 3; // суррогатная пара
-        else if (c < 57344)
-            bytesRead = bytesRead + 2;
-        else if (c < 65536)
-            bytesRead = bytesRead + 3;
-        else
-            bytesRead = bytesRead + 4;
-
-        UpdateLineColumn(c);
-        return c;
     }
 
     /**
