@@ -83,6 +83,7 @@ public class SimpleCharStream {
 
                 bufpos -= tokenBegin;
             }
+            xtraBegin -= tokenBegin;
         }
         catch (Throwable t) {
             throw new Error(t.getMessage());
