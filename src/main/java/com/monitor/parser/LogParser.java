@@ -19,8 +19,8 @@ package com.monitor.parser;
 
 import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.filter.Filter;
+import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 
 public interface LogParser {
@@ -28,7 +28,7 @@ public interface LogParser {
     public void parse(FileState state, String encoding, long fromPosition, int maxRecords, 
             Filter filter, Map<String, Object> parameters) throws IOException, ParseException;
     
-    public void setRecordsStorage(List<byte[]> recordsStorage);
+    public void setRecordsStorage(ParserRecordsStorage storage);
     
     public long getBytesRead();
     

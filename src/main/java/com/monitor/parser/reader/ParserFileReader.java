@@ -1,4 +1,4 @@
-package com.monitor.agent.server;
+package com.monitor.parser.reader;
 
 /*
  * Copyright 2021 Aleksei Andreev
@@ -17,13 +17,14 @@ package com.monitor.agent.server;
  *
  */
 
+import com.monitor.agent.server.FileState;
+import com.monitor.agent.server.LogFormat;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.PMParser;
 import com.monitor.parser.TJParser;
 import com.monitor.parser.LogParser;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +36,7 @@ public class ParserFileReader {
     private static final Logger logger = Logger.getLogger(ParserFileReader.class);
 
     protected int spoolSize = 0;
-    private final List<byte[]> records;
+    private final ParserRecordsStorage records;
     private Map<File, Long> pointerMap;
     private int recordsCount;
     private final HashMap<LogFormat, LogParser> parsers;
@@ -43,9 +44,10 @@ public class ParserFileReader {
     private final boolean draft;
     private final Map<String, Object> parserParameters;
 
-    public ParserFileReader(int spoolSize, Filter filter, boolean draft, Map<String, Object> parserParameters) {
+    public ParserFileReader(int spoolSize, Filter filter, boolean draft, Map<String, Object> parserParameters, 
+            ParserRecordsStorage storage) {
         this.spoolSize = spoolSize;
-        this.records = new ArrayList<>();
+        this.records = storage;
         this.parsers = new HashMap<>(2);
         this.filter = filter;
         this.draft = draft;
@@ -69,6 +71,7 @@ public class ParserFileReader {
         pointerMap = new HashMap<>(fileList.size(), 1);
         for (FileState state : fileList) {
             recordsCount += readFile(state, spoolSize - recordsCount);
+            System.gc();
         }
         if (!draft) {
             for (FileState state : fileList) {
@@ -145,7 +148,7 @@ public class ParserFileReader {
     }
 
     public List<byte[]> getRecords() {
-        return records;
+        return records.getAll();
     }
     
     public void done() {

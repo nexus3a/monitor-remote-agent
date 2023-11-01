@@ -18,13 +18,16 @@ package com.monitor.agent.server.handler;
  */
 import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.FileWatcher;
-import com.monitor.agent.server.ParserFileReader;
 import com.monitor.agent.server.Registrar;
 import com.monitor.agent.server.Section;
 import com.monitor.agent.server.Server;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.agent.server.piped.ParserPipedOutputStream;
 import com.monitor.agent.server.piped.ParserPipedStream;
+import com.monitor.parser.reader.ParserFileReader;
+import com.monitor.parser.reader.ParserListStorage;
+import com.monitor.parser.reader.ParserRecordsStorage;
+import com.monitor.parser.reader.ParserStreamStorage;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import fi.iki.elonen.router.RouterNanoHTTPD;
@@ -68,6 +71,7 @@ public class LogRecordsHandler extends DefaultResponder {
 
                     try {
 
+                        ParserRecordsStorage storage = new ParserStreamStorage(output);
                         RequestParameters parameters = getParameters();
 
                         // получаем признак "чернового" чтения - данные читаются с самого начала,
@@ -134,9 +138,14 @@ public class LogRecordsHandler extends DefaultResponder {
                                 }
                             }
 
-                            // читаем новые записи
+                            // читаем новые записи и в случае использования хранилища ParserStreamStorage сразу
+                            // выводим их в поток; в случае использования хранилища вида ParserListStorage вывод
+                            // в поток будет в отдельном цикле, ниже
                             //
-                            reader = new ParserFileReader(maxRecords, filter, draft, parserParams);
+                            if (storage instanceof ParserStreamStorage) {
+                                output.write("[\n".getBytes(StandardCharsets.UTF_8));
+                            }
+                            reader = new ParserFileReader(maxRecords, filter, draft, parserParams, storage);
                             for (FileWatcher watcher : watchers) {
                                 synchronized (watcher) {
                                     watcher.checkFiles();
@@ -146,15 +155,24 @@ public class LogRecordsHandler extends DefaultResponder {
                                     }
                                 }
                             }
+                            if (storage instanceof ParserStreamStorage) {
+                                output.write("]".getBytes(StandardCharsets.UTF_8));
+                            }
                         }
 
-                        List<byte[]> records = reader.getRecords();
-                        output.write("[\n".getBytes(StandardCharsets.UTF_8));
-                        for (byte[] record : records) {
-                            output.write(record);
-                            output.write(",\n".getBytes(StandardCharsets.UTF_8));
+                        // здесь вывод в поток записей, если используется хранилище ParserListStorage:
+                        // записи выводятся после накопления в хранилище, а не в процессе разбора
+                        //
+                        if (storage instanceof ParserListStorage) {
+                            List<byte[]> records = reader.getRecords();
+                            final byte[] comma = ",\n".getBytes(StandardCharsets.UTF_8);
+                            output.write("[\n".getBytes(StandardCharsets.UTF_8));
+                            for (byte[] record : records) {
+                                output.write(record);
+                                output.write(comma);
+                            }
+                            output.write("]".getBytes(StandardCharsets.UTF_8));
                         }
-                        output.write("]".getBytes(StandardCharsets.UTF_8));
                     }
                     catch (Exception ex) {
                         try {

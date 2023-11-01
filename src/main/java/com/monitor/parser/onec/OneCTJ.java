@@ -340,13 +340,6 @@ public class OneCTJ implements OneCTJConstants {
         logRecord1.clear();
         propertyValue = "";
         
-        /*
-        if (lockSpaces != null) lockSpaces.clear();
-        if (lockSpaceProps != null) lockSpaceProps.clear();
-        if (lockRecords != null) lockRecords.clear();
-        if (lockRecordProps != null) lockRecordProps.clear();
-        if (lockSpaces != null) lockSpaces.clear();
-        */
         lockSpaceProps = null;
         lockRecords = null;
         lockRecordProps = null;
@@ -1157,7 +1150,7 @@ public class OneCTJ implements OneCTJConstants {
         switch ((jj_ntk == -1) ? jj_ntk_f() : jj_ntk) {
             case EDP_LKSRC:
             case EDP_WAIT_CONNECTIONS: {
-				/*
+		/*
                 switch ((jj_ntk == -1) ? jj_ntk_f() : jj_ntk) {
                     case EDP_LKSRC: {
                         jj_consume_token(EDP_LKSRC);
@@ -1873,86 +1866,6 @@ public class OneCTJ implements OneCTJConstants {
     final private JJCalls[] jj_2_rtns = new JJCalls[4];
     private boolean jj_rescan = false;
     private int jj_gc = 0;
-
-    /**
-     * Constructor with InputStream.
-     */
-    public OneCTJ(java.io.InputStream stream) {
-        this(stream, null);
-    }
-
-    /**
-     * Reinitialise.
-     */
-    public void ReInit(java.io.InputStream stream) {
-        ReInit(stream, null);
-    }
-
-    /**
-     * Constructor.
-     */
-    public OneCTJ(java.io.Reader stream) {
-        jj_input_stream = new SimpleCharStream(stream, 1, 1);
-        token_source = new OneCTJTokenManager(jj_input_stream);
-        token = new Token();
-        jj_ntk = -1;
-        jj_gen = 0;
-        for (int i = 0; i < 46; i++) {
-            jj_la1[i] = -1;
-        }
-        for (int i = 0; i < jj_2_rtns.length; i++) {
-            jj_2_rtns[i] = new JJCalls();
-        }
-    }
-
-    /**
-     * Reinitialise.
-     */
-    public void ReInit(java.io.Reader stream) {
-        jj_input_stream.ReInit(stream, 1, 1);
-        token_source.ReInit(jj_input_stream);
-        token = new Token();
-        jj_ntk = -1;
-        jj_gen = 0;
-        for (int i = 0; i < 46; i++) {
-            jj_la1[i] = -1;
-        }
-        for (int i = 0; i < jj_2_rtns.length; i++) {
-            jj_2_rtns[i] = new JJCalls();
-        }
-    }
-
-    /**
-     * Constructor with generated Token Manager.
-     */
-    public OneCTJ(OneCTJTokenManager tm) {
-        token_source = tm;
-        token = new Token();
-        jj_ntk = -1;
-        jj_gen = 0;
-        for (int i = 0; i < 46; i++) {
-            jj_la1[i] = -1;
-        }
-        for (int i = 0; i < jj_2_rtns.length; i++) {
-            jj_2_rtns[i] = new JJCalls();
-        }
-    }
-
-    /**
-     * Reinitialise.
-     */
-    public void ReInit(OneCTJTokenManager tm) {
-        token_source = tm;
-        token = new Token();
-        jj_ntk = -1;
-        jj_gen = 0;
-        for (int i = 0; i < 46; i++) {
-            jj_la1[i] = -1;
-        }
-        for (int i = 0; i < jj_2_rtns.length; i++) {
-            jj_2_rtns[i] = new JJCalls();
-        }
-    }
 
     private Token jj_consume_token(int kind) throws ParseException {
         Token oldToken;

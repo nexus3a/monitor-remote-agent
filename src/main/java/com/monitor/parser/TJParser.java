@@ -26,6 +26,8 @@ import com.monitor.agent.server.FileState;
 import com.monitor.parser.onec.OneCTJRecord;
 import com.monitor.parser.onec.OneCTJ;
 import com.monitor.parser.onec.TokenMgrError;
+import com.monitor.parser.reader.ParserListStorage;
+import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -43,7 +45,7 @@ import java.util.Map;
 
 public class TJParser extends OneCTJ implements LogParser {
     
-    private List<byte[]> recordsStorage;
+    private ParserRecordsStorage recordsStorage;
     private long readyBytesRead;
     private Throwable exception;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -55,7 +57,7 @@ public class TJParser extends OneCTJ implements LogParser {
     
     @SuppressWarnings("SleepWhileInLoop")
     public static void main(String[] args) throws IOException, InterruptedException {
-        List<byte[]> recordsStorage = new ArrayList<>();
+        ParserListStorage recordsStorage = new ParserListStorage();
         TJParser parser = new TJParser();
         parser.setRecordsStorage(recordsStorage);
         
@@ -186,7 +188,7 @@ public class TJParser extends OneCTJ implements LogParser {
 
 
     public TJParser() {
-        recordsStorage = new ArrayList<>();
+        recordsStorage = new ParserListStorage();
         filteredCount = 0L;
         readyBytesRead = 0L;
         exception = null;
@@ -264,29 +266,29 @@ public class TJParser extends OneCTJ implements LogParser {
                 if (addFields != null) {
                     logRecord.putAll(addFields);
                 }
-                recordsStorage.add(mapper.writeValueAsBytes(logRecord));
+                recordsStorage.put(mapper.writeValueAsBytes(logRecord));
             }
             readyBytesRead = getReadyBytesRead();
         }
-        catch (JsonProcessingException ex) {
+        catch (Exception ex) {
             Map<String, String> message = new HashMap<>(1);
             message.put("LOGSERIALIZEERROR", ex.getMessage());
             try {
-                recordsStorage.add(mapper.writeValueAsBytes(message));
+                recordsStorage.put(mapper.writeValueAsBytes(message));
             }
-            catch (JsonProcessingException ex1) {}
+            catch (Exception ex1) {}
         }
         return filteredCount < maxCount; // было [super.protected] recordsCount < maxCount
     }
 
     
     @Override
-    public void setRecordsStorage(List<byte[]> recordsStorage) {
-        this.recordsStorage = recordsStorage;
+    public void setRecordsStorage(ParserRecordsStorage storage) {
+        this.recordsStorage = storage;
     }
 
     
-    public List<byte[]> getRecordsStorage() {
+    public ParserRecordsStorage getRecordsStorage() {
         return recordsStorage;
     }
 
