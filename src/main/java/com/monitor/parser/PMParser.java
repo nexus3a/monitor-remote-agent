@@ -18,7 +18,6 @@ package com.monitor.parser;
 */
 
 import com.monitor.agent.server.filter.Filter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
 import com.monitor.agent.server.PredefinedFields;
@@ -28,9 +27,7 @@ import com.monitor.parser.reader.ParserListStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class PMParser extends PerfMon implements LogParser {
@@ -44,6 +41,7 @@ public class PMParser extends PerfMon implements LogParser {
     private Filter filter;
     private long filteredCount;
     private boolean firstInFile;
+    private int delay;
     
     
     public static void main(String[] args) throws IOException, ParseException {
@@ -67,11 +65,12 @@ public class PMParser extends PerfMon implements LogParser {
         firstInFile = true;
         recordsBytesRead = 0L;
         exception = null;
+        delay = 0;
     }
     
     
     @Override
-    public void parse(FileState state, String encoding, long fromPosition, int maxRecords, Filter filter, Map<String, Object> parameters)
+    public void parse(FileState state, String encoding, long fromPosition, int maxRecords, Filter filter, ParserParameters parameters)
             throws IOException, ParseException {
 
         addFields = state.getFields();
@@ -79,6 +78,7 @@ public class PMParser extends PerfMon implements LogParser {
         filteredCount = 0L;
         firstInFile = true;
         recordsBytesRead = fromPosition;
+        delay = parameters.getDelay();
         exception = null;
         
         try (BufferedRandomAccessFileStream stream = new BufferedRandomAccessFileStream(state.getOpenedRandomAccessFile(), 4096)) {
@@ -132,6 +132,9 @@ public class PMParser extends PerfMon implements LogParser {
                 logRecord.putAll(addFields);
             }
             recordsStorage.put(mapper.writeValueAsBytes(logRecord));
+            if (delay > 0) {
+                Thread.sleep(delay);
+            }
             recordsBytesRead = super.getBytesRead();
         }
         catch (Exception ex) {

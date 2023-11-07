@@ -21,12 +21,11 @@ import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.IOException;
-import java.util.Map;
 
 public interface LogParser {
     
     public void parse(FileState state, String encoding, long fromPosition, int maxRecords, 
-            Filter filter, Map<String, Object> parameters) throws IOException, ParseException;
+            Filter filter, ParserParameters parameters) throws IOException, ParseException;
     
     public void setRecordsStorage(ParserRecordsStorage storage);
     

@@ -23,6 +23,7 @@ import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.PMParser;
 import com.monitor.parser.TJParser;
 import com.monitor.parser.LogParser;
+import com.monitor.parser.ParserParameters;
 
 import java.io.File;
 import java.util.Collection;
@@ -42,9 +43,9 @@ public class ParserFileReader {
     private final HashMap<LogFormat, LogParser> parsers;
     private final Filter filter;
     private final boolean draft;
-    private final Map<String, Object> parserParameters;
+    private final ParserParameters parserParameters;
 
-    public ParserFileReader(int spoolSize, Filter filter, boolean draft, Map<String, Object> parserParameters, 
+    public ParserFileReader(int spoolSize, Filter filter, boolean draft, ParserParameters parserParameters, 
             ParserRecordsStorage storage) {
         this.spoolSize = spoolSize;
         this.records = storage;
@@ -71,7 +72,6 @@ public class ParserFileReader {
         pointerMap = new HashMap<>(fileList.size(), 1);
         for (FileState state : fileList) {
             recordsCount += readFile(state, spoolSize - recordsCount);
-            System.gc();
         }
         if (!draft) {
             for (FileState state : fileList) {

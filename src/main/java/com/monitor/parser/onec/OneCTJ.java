@@ -18,6 +18,7 @@ package com.monitor.parser.onec;
  */
 import com.monitor.parser.Token;
 import com.monitor.parser.ParseException;
+import com.monitor.parser.ParserParameters;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -114,7 +115,9 @@ public class OneCTJ implements OneCTJConstants {
         System.out.println("test = " + DATE_FORMAT.format(new Date((63827362557274001L - MICROSECONDS_TO_1970 - 999983) / 1000L)));
 
         final OneCTJ parser = new OneCTJ();
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), "UTF-8");
+        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), 
+                "UTF-8",
+                new ParserParameters());
         parser.onParseEnd();
 //        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\23040608_0.log"), "UTF-8");
 //        parser.onParseEnd();
@@ -126,7 +129,7 @@ public class OneCTJ implements OneCTJConstants {
     }
 
     public void parse(InputStream inputStream, String encoding, int year, int month, int day, int hour,
-            Map<String, Object> parameters) throws ParseException {
+            ParserParameters parameters) throws ParseException {
 
         ReInit(inputStream, encoding);
 
@@ -141,8 +144,8 @@ public class OneCTJ implements OneCTJConstants {
         calendar.set(Calendar.MILLISECOND, 0);
         microsecondsBase = calendar.getTimeInMillis() * 1000L + MICROSECONDS_TO_1970;
 
-        includeLockRecords = parameters == null
-                || !((Set) parameters.getOrDefault("exclude-data", new HashSet<>())).contains("lock-fields");
+        includeLockRecords = !parameters.getExcludeData().contains("lock-fields");
+        jj_input_stream.setMaxTokenLength(parameters.getMaxTokenLength());
 
         logRecord.clear();
         readyLogRecord.clear();
@@ -161,7 +164,9 @@ public class OneCTJ implements OneCTJConstants {
 
     }
 
-    public void parse(File file, String encoding) throws FileNotFoundException, IOException, ParseException {
+    public void parse(File file, String encoding, ParserParameters parameters) 
+            throws FileNotFoundException, IOException, ParseException {
+        
         FileInputStream inputStream = new FileInputStream(file);
 
         String fileName = file.getName();
@@ -172,7 +177,7 @@ public class OneCTJ implements OneCTJConstants {
                 isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0,
                 isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1,
                 isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0,
-                null);
+                parameters);
     }
 
     public final long getPerfomance() {

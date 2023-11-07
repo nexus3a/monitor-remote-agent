@@ -24,6 +24,7 @@ import com.monitor.agent.server.Server;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.agent.server.piped.ParserPipedOutputStream;
 import com.monitor.agent.server.piped.ParserPipedStream;
+import com.monitor.parser.ParserParameters;
 import com.monitor.parser.reader.ParserFileReader;
 import com.monitor.parser.reader.ParserListStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
@@ -35,7 +36,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -107,17 +107,40 @@ public class LogRecordsHandler extends DefaultResponder {
                         HashSet<String> excludes = new HashSet<>();
                         excludes.addAll(Arrays.asList(strExcludes.replaceAll(" ", "").split(",")));
 
+                        // получаем максимальную длину токена, которую агент будет возвращать клиенту;
+                        // в случае, если в файле токен (значение параметра) будет более указанной длины
+                        // в символах, то вернётся значение в виде "значение-параметра-(... ещё N симв.)";
+                        // используем значение 0 для указания того, что ограничений на длину нет
+                        //
+                        int maxTokenLen = Integer.parseInt((String) parameters.get("max-token-length", "-1"));
+                        maxTokenLen = (maxTokenLen == -1) ? 1024 * 32 : maxTokenLen;
+
+                        // получаем задержку времени, которую можно использовать для уменьшения нагрузки
+                        // на процессор при разборе файлов лога - чем больше задержка, тем меньше нагрузка,
+                        // но и скорость разбора увеличивается; задержка = 0 - то же самое, что без задержки,
+                        // задержка более 5мс опасна - производительность резко падает
+                        //
+                        int delay = Integer.parseInt((String) parameters.get("delay", "0"));
+
                         // создаём структуру с дополнительными данными, которую можно
                         // передать парсеру
                         //
-                        HashMap<String, Object> parserParams = new HashMap<>();
-                        parserParams.put("exclude-data", excludes);
-
+                        ParserParameters parserParams = new ParserParameters();
+                        parserParams.setExcludeData(excludes);
+                        parserParams.setMaxTokenLength(maxTokenLen);
+                        parserParams.setDelay(delay);
+                        
                         // получаем секцию, в пределах которой нужно получать данные из лог-файлов
                         //
                         String sectionName = (String) parameters.get("section", (String) null);
                         Section section = Section.byName(sectionName);
-                        Object sectionLock = section == null ? server : section;
+                        
+                        // агент блокирует параллельный доступ к одной и той же секции данных из разных запросов;
+                        // если требуется установить глобальный запрет на параллельную обработку даже разных
+                        // секций, то используется параметр "global-lock"
+                        //
+                        boolean globalLock = !"false".equalsIgnoreCase((String) parameters.get("global-lock", "false"));
+                        Object sectionLock = (section == null || globalLock) ? server : section;
 
                         synchronized (sectionLock) {
 
@@ -154,6 +177,7 @@ public class LogRecordsHandler extends DefaultResponder {
                                         break;
                                     }
                                 }
+                                System.gc();
                             }
                             if (storage instanceof ParserStreamStorage) {
                                 output.write("]".getBytes(StandardCharsets.UTF_8));

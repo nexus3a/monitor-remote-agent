@@ -18,7 +18,6 @@ package com.monitor.parser;
 */
 
 import com.monitor.agent.server.filter.Filter;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
 import com.monitor.agent.server.PredefinedFields;
@@ -53,6 +52,7 @@ public class TJParser extends OneCTJ implements LogParser {
     private PredefinedFields addFields;
     private Filter filter;
     private long filteredCount;
+    private int delay;
     
     
     @SuppressWarnings("SleepWhileInLoop")
@@ -176,11 +176,8 @@ public class TJParser extends OneCTJ implements LogParser {
     }
     
     
-    private static String makeParserErrorsLogDir(Map<String, Object> parameters, String defDirName) {
-        String dirName = defDirName;
-        if (parameters != null) {
-            dirName = (String) parameters.getOrDefault("parser-error-log", dirName);
-        }
+    private static String makeParserErrorsLogDir(ParserParameters parameters) {
+        String dirName = parameters.getParserErrorLog();
         String workdir = new File("").getAbsolutePath() + "/" + dirName;
         new File(workdir).mkdirs();
         return workdir;
@@ -192,12 +189,13 @@ public class TJParser extends OneCTJ implements LogParser {
         filteredCount = 0L;
         readyBytesRead = 0L;
         exception = null;
+        delay = 0;
     }
     
     
     @Override
     @SuppressWarnings("ConvertToTryWithResources")
-    public void parse(FileState state, String encoding, long fromPosition, int maxRecords, Filter filter, Map<String, Object> parameters)
+    public void parse(FileState state, String encoding, long fromPosition, int maxRecords, Filter filter, ParserParameters parameters)
             throws IOException, ParseException {
         
         if (maxRecords <= 0) {
@@ -210,6 +208,7 @@ public class TJParser extends OneCTJ implements LogParser {
         long pos = fromPosition;
         filteredCount = 0L;
         readyBytesRead = 0;
+        delay = parameters.getDelay();
         exception = null;
         String fileName = state.getFile().getName();
         boolean isTJName = fileName.matches("\\d{8}.*\\.log");
@@ -231,7 +230,7 @@ public class TJParser extends OneCTJ implements LogParser {
             if (message != null 
                     && !message.contains("Encountered: <EOF> after :")
                     && !message.contains("Encountered \"<EOF>\" at")) {
-                String parserErrorLog = makeParserErrorsLogDir(parameters, "logs/parser-errors");
+                String parserErrorLog = makeParserErrorsLogDir(parameters);
                 File errorFragmentFile = new File(String.format("%s/%s.%s.%s.parse_error", 
                         parserErrorLog,
                         state.getFile().getName(),
@@ -267,6 +266,9 @@ public class TJParser extends OneCTJ implements LogParser {
                     logRecord.putAll(addFields);
                 }
                 recordsStorage.put(mapper.writeValueAsBytes(logRecord));
+            }
+            if (delay > 0) {
+                Thread.sleep(delay);
             }
             readyBytesRead = getReadyBytesRead();
         }

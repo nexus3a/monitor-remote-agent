@@ -39,7 +39,7 @@ public class RootHandler extends DefaultResponder {
                 + "(post)/config : write server configuration\n"
                 + "(get)/accessibility : test catalogs for read/write capabiblities\n"
                 + "(get)/watchmap : show current watched log files\n"
-                + "(get)/logrecords?[section=<section>]&[max=<max-num-records>]&[filter=<json-filter>]&[ack] : return log records\n"
+                + "(get)/logrecords?[section=<section>]&[max=<max-num-records>]&[filter=<json-filter>]&[ack]&[global-lock=<true|false>]&[max-token-length=<max-symbols>]&[exclude-data=<field1,field2,...,fieldN>]&[draft=<true|false>]&[delay=<N-ms>] : return log records\n"
                 + "(get)/ack : signal to confirm access last read log records\n"
                 + "(get)/sessionsinfo : show cluster's sessions info\n"
                 + "(get)/tjlogconfig : show tech-journal config content\n"

@@ -339,6 +339,14 @@ public class SimpleCharStream {
     public int getBeginLine() {
         return bufline[tokenBegin];
     }
+    
+    /**
+     * Set maximum token length; 0 is the same as maxint
+     * @param maxTokenLength 
+     */
+    public final void setMaxTokenLength(int maxTokenLength) {
+        maxTokenLen = (maxTokenLength == 0) ? Integer.MAX_VALUE : maxTokenLength;
+    }
 
     /**
      * Backup a number of characters.
@@ -356,37 +364,6 @@ public class SimpleCharStream {
     /**
      * Constructor.
      * @param dstream
-     * @param startline
-     * @param startcolumn
-     * @param buffersize
-     * @param maxTokenLength
-     */
-    public SimpleCharStream(java.io.Reader dstream, int startline, int startcolumn, int buffersize, int maxTokenLength) {
-        inputStream = dstream;
-        line = startline;
-        column = startcolumn - 1;
-
-        available = bufsize = buffersize;
-        buffer = new char[buffersize];
-        bufline = new int[buffersize];
-        bufcolumn = new int[buffersize];
-        
-        maxTokenLen = maxTokenLength;
-    }
-
-    /**
-     * Constructor.
-     * @param dstream
-     * @param startline
-     * @param startcolumn
-     */
-    public SimpleCharStream(java.io.Reader dstream, int startline, int startcolumn) {
-        this(dstream, startline, startcolumn, BUFF_INCREMENT, MAX_TOKEN_LENGTH);
-    }
-
-    /**
-     * Constructor.
-     * @param dstream
      * @param encoding
      * @param startline
      * @param startcolumn
@@ -396,26 +373,24 @@ public class SimpleCharStream {
      */
     public SimpleCharStream(java.io.InputStream dstream, String encoding, int startline,
             int startcolumn, int buffersize, int maxTokenLength) throws java.io.UnsupportedEncodingException {
-        this(encoding == null 
+
+        inputStream = encoding == null 
                 ? new java.io.InputStreamReader(dstream) 
-                : new java.io.InputStreamReader(dstream, encoding)
-                , startline, startcolumn, buffersize, maxTokenLength);
+                : new java.io.InputStreamReader(dstream, encoding);
+        
+        line = startline;
+        column = startcolumn - 1;
+
+        available = bufsize = buffersize;
+        buffer = new char[buffersize];
+        bufline = new int[buffersize];
+        bufcolumn = new int[buffersize];
+        
+        setMaxTokenLength(maxTokenLength);
+
         bytePerChar = encoding == null
                 ? false
                 : (!"utf-8".equalsIgnoreCase(encoding) && !"utf-16".equalsIgnoreCase(encoding));
-    }
-
-    /**
-     * Constructor.
-     * @param dstream
-     * @param startline
-     * @param startcolumn
-     * @param buffersize
-     * @param maxTokenLength
-     */
-    public SimpleCharStream(java.io.InputStream dstream, int startline, int startcolumn, 
-            int buffersize, int maxTokenLength) {
-        this(new java.io.InputStreamReader(dstream), startline, startcolumn, buffersize, maxTokenLength);
     }
 
     /**
