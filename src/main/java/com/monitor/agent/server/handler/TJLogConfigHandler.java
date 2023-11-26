@@ -37,6 +37,9 @@ import org.xml.sax.SAXException;
 
 public class TJLogConfigHandler extends DefaultResponder {
     
+    private static final int WRITE_ATTEMPTS = 5;
+    private static final int WRITE_ATTEMPT_PAUSE = 1000;
+    
     private static Document readXml(File file) 
             throws ParserConfigurationException, SAXException, IOException {
         DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
@@ -98,11 +101,27 @@ public class TJLogConfigHandler extends DefaultResponder {
                     throw new IllegalStateException("Данные для записи не в формате XML", ex);
                 }
 
-                try (FileOutputStream fos = new FileOutputStream(new File(fileName))) {
-                    fos.write(fileData.getBytes("UTF-8"));
+                // файл logcfg.xml может быть заблокирован от записи, если платформа
+                // читает из него данные(?), поэтому делаем несколько попыток записи
+                // с паузой между попытками
+                //
+                IOException ioe = null;
+                for (int t = 0; t < WRITE_ATTEMPTS; t++) {
+                    try (FileOutputStream fos = new FileOutputStream(new File(fileName))) {
+                        fos.write(fileData.getBytes("UTF-8"));
+                        ioe = null;
+                        break;
+                    }
+                    catch (IOException ex) {
+                        ioe = ex;
+                        if (t < WRITE_ATTEMPTS - 1) {
+                            Thread.sleep(WRITE_ATTEMPT_PAUSE);
+                        }
+                    }
                 }
-                catch (IOException ex) {
-                    throw new IllegalStateException("Ошибка при записи данных в logcfg.xml", ex);
+                
+                if (ioe != null) {
+                    throw new IllegalStateException("Ошибка при записи данных в logcfg.xml", ioe);
                 }
 
                 response = NanoHTTPD.newFixedLengthResponse(
