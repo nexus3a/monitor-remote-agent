@@ -22,6 +22,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.nio.charset.Charset;
 
 /**
  * https://github.com/apache/pdfbox/blob/a27ee91/fontbox/src/main/java/org/apache/fontbox/ttf/BufferedRandomAccessFile.java
@@ -43,6 +44,8 @@ public class BufferedRandomAccessFileStream extends InputStream {
     private int bufpos = 0;
     private long realpos = 0; // The position inside the actual file
     private final int BUFSIZE; // Buffer size
+    
+    private long backSeekCount;
 
     public BufferedRandomAccessFileStream(String filename, String mode, int bufsize)
             throws FileNotFoundException, IOException {
@@ -58,6 +61,7 @@ public class BufferedRandomAccessFileStream extends InputStream {
         file = raf;
         BUFSIZE = bufsize;
         buffer = new byte[BUFSIZE];
+        backSeekCount = 0;
         invalidate();
     }
 
@@ -75,6 +79,19 @@ public class BufferedRandomAccessFileStream extends InputStream {
         // FIX to handle unsigned bytes
         return (buffer[bufpos++] + 256) & 0xFF;
         // End of fix
+    }
+
+    /**
+     * Reads and returns only one byte from buffer (not int)
+     */
+    public final byte bread() throws IOException {
+        if (bufpos >= bufend && fillBuffer() < 0) {
+            return -1;
+        }
+        if (bufend == 0) {
+            return -1;
+        }
+        return buffer[bufpos++];
     }
 
     /**
@@ -140,6 +157,20 @@ public class BufferedRandomAccessFileStream extends InputStream {
         }
     }
 
+    /**
+     * {@inheritDoc}
+     */
+    public String readString(int len, Charset chs) throws IOException {
+        if (len <= bufend - bufpos) {
+            String result = new String(buffer, bufpos, len, chs);
+            bufpos += len;
+            return result;
+        }
+        byte[] strb = new byte[len];
+        read(strb, 0, len);
+        return new String(strb, 0, len, chs);
+    }
+
     public long getFilePointer() throws IOException {
         return realpos - bufend + bufpos;
     }
@@ -151,6 +182,7 @@ public class BufferedRandomAccessFileStream extends InputStream {
         }
         else {
             file.seek(pos);
+            backSeekCount++;
             invalidate();
         }
     }
@@ -162,6 +194,11 @@ public class BufferedRandomAccessFileStream extends InputStream {
     @Override
     public void close() throws IOException {
         file.close();
+        backSeekCount = 0;
     }
 
+    public long getBackSeekCount() {
+        return backSeekCount;
+    }
+    
 }

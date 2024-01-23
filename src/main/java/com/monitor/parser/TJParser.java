@@ -18,7 +18,6 @@ package com.monitor.parser;
 */
 
 import com.monitor.agent.server.filter.Filter;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
 import com.monitor.agent.server.PredefinedFields;
 import com.monitor.agent.server.FileState;
@@ -38,16 +37,13 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class TJParser extends OneCTJ implements LogParser {
     
     private ParserRecordsStorage recordsStorage;
     private long readyBytesRead;
     private Throwable exception;
-    private final ObjectMapper mapper = new ObjectMapper();
     private int maxCount;
     private PredefinedFields addFields;
     private Filter filter;
@@ -82,8 +78,8 @@ public class TJParser extends OneCTJ implements LogParser {
                 duration = duration + (new Date().getTime() - m);
                 System.out.println("found rows: " + recordsStorage.size());
                 System.out.println(" file size: " + file.length());
-                System.out.println("bytes read: " + parser.getBytesRead());
-                if (parser.getBytesRead() != file.length()) {
+                System.out.println("bytes read: " + parser.getFilePos());
+                if (parser.getFilePos() != file.length()) {
                     System.out.println("      ====: ^");
                 }
                 recordsStorage.clear();
@@ -265,7 +261,10 @@ public class TJParser extends OneCTJ implements LogParser {
                 if (addFields != null) {
                     logRecord.putAll(addFields);
                 }
-                recordsStorage.put(mapper.writeValueAsBytes(logRecord));
+                recordsStorage.put(logRecord);
+            }
+            else {
+                recordsStorage.knock();
             }
             if (delay > 0) {
                 Thread.sleep(delay);
@@ -273,16 +272,16 @@ public class TJParser extends OneCTJ implements LogParser {
             readyBytesRead = getReadyBytesRead();
         }
         catch (Exception ex) {
-            Map<String, String> message = new HashMap<>(1);
+            OneCTJRecord message = new OneCTJRecord();
             message.put("LOGSERIALIZEERROR", ex.getMessage());
             try {
-                recordsStorage.put(mapper.writeValueAsBytes(message));
+                recordsStorage.put(message);
             }
             catch (Exception ex1) {}
         }
         return filteredCount < maxCount; // было [super.protected] recordsCount < maxCount
     }
-
+    
     
     @Override
     public void setRecordsStorage(ParserRecordsStorage storage) {
@@ -301,7 +300,7 @@ public class TJParser extends OneCTJ implements LogParser {
     // закончившихся ошибкой чтения данных, чтобы можно было начать следующее чтение
     // с позиции начала записи лога, в которой последний раз встретилась ошибка
     //
-    public long getBytesRead() {
+    public long getFilePos() {
         return readyBytesRead;
     }
 

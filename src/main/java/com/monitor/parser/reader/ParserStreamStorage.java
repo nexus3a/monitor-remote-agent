@@ -15,6 +15,8 @@
  */
 package com.monitor.parser.reader;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.monitor.parser.LogRecord;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -28,29 +30,45 @@ import java.util.List;
 public class ParserStreamStorage implements ParserRecordsStorage {
     
     private static final byte[] COMMA = ",\n".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] SPACE = " ".getBytes(StandardCharsets.UTF_8);
     
     private final OutputStream stream;
+    private final ObjectMapper mapper = new ObjectMapper();
     private boolean first;
     private int size;
+    
+    private long streamTouchMoment;
+    private long streamTouchTimeout;
 
-    public ParserStreamStorage(OutputStream stream) {
+    public ParserStreamStorage(OutputStream stream, long streamTouchTimeout) {
         this.stream = stream;
         this.first = true;
         this.size = 0;
+        this.streamTouchMoment = System.currentTimeMillis();
+        this.streamTouchTimeout = streamTouchTimeout;
     }
 
     @Override
-    public void put(byte[] record) throws IOException {
+    public void put(LogRecord record) throws IOException {
         if (first) {
             first = false;
         }
         else {
             stream.write(COMMA);
         }
-        stream.write(record);
+        stream.write(mapper.writeValueAsBytes(record));
         size++;
     }
 
+    @Override
+    public void knock() throws Exception {
+        if (System.currentTimeMillis() - streamTouchMoment < streamTouchTimeout) {
+            return;
+        }
+        streamTouchMoment = System.currentTimeMillis();
+        stream.write(SPACE);
+    }
+    
     @Override
     public int size() {
         return size;

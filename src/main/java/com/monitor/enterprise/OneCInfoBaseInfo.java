@@ -25,13 +25,14 @@ public class OneCInfoBaseInfo {
     
     private String name;
     private List<Map<String, Object>> sessions;
-    private StackTraceElement[] exception;
+    private String exception;
 
     public OneCInfoBaseInfo() {
     }
     
     public OneCInfoBaseInfo(OneCInfoBaseConfig config) {
         name = config.getName();
+        exception = null;
     }
     
     public String getName() {
@@ -50,12 +51,16 @@ public class OneCInfoBaseInfo {
         this.sessions = sessions;
     }
 
-    public StackTraceElement[] getException() {
+    public String getException() {
         return exception;
     }
 
     public void setException(Exception exception) {
-        this.exception = exception.getStackTrace();
+        if (exception == null) {
+            return;
+        }
+        String excpMsg = exception.getMessage();
+        this.exception = excpMsg.isEmpty() ? exception.getClass().getName() : excpMsg;
     }
     
 }

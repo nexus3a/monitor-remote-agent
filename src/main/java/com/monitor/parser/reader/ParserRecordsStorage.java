@@ -15,6 +15,7 @@
  */
 package com.monitor.parser.reader;
 
+import com.monitor.parser.LogRecord;
 import java.util.List;
 
 /**
@@ -23,7 +24,9 @@ import java.util.List;
  */
 public interface ParserRecordsStorage {
     
-    public void put(byte[] record) throws Exception;
+    public void put(LogRecord record) throws Exception;
+    
+    public void knock() throws Exception;
     
     public int size();
     

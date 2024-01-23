@@ -24,12 +24,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
 
 public class PerfMon implements PerfMonConstants {
 
-    private final Map<String, Object> logRecord = new HashMap<String, Object>();
+    private final PMLogRecord logRecord = new PMLogRecord();
     private long bytesRead;
 
     protected long recordsCount = 0L;
@@ -76,7 +74,7 @@ public class PerfMon implements PerfMonConstants {
         return recordsCount;
     }
 
-    public boolean onLogRecord(Map<String, Object> logRecord) {
+    public boolean onLogRecord(PMLogRecord logRecord) {
         return true;
     }
 

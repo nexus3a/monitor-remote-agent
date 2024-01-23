@@ -107,6 +107,9 @@ public class TJLogConfigHandler extends DefaultResponder {
                 //
                 IOException ioe = null;
                 for (int t = 0; t < WRITE_ATTEMPTS; t++) {
+                    if (t != 0) {
+                        Thread.sleep(WRITE_ATTEMPT_PAUSE);
+                    }
                     try (FileOutputStream fos = new FileOutputStream(new File(fileName))) {
                         fos.write(fileData.getBytes("UTF-8"));
                         ioe = null;
@@ -114,9 +117,6 @@ public class TJLogConfigHandler extends DefaultResponder {
                     }
                     catch (IOException ex) {
                         ioe = ex;
-                        if (t < WRITE_ATTEMPTS - 1) {
-                            Thread.sleep(WRITE_ATTEMPT_PAUSE);
-                        }
                     }
                 }
                 

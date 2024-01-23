@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.monitor.parser.onec;
+package com.monitor.parser.onecf;
 
 import com.monitor.parser.LogRecord;
 
@@ -22,12 +22,14 @@ import com.monitor.parser.LogRecord;
  * @author Алексей
  */
 public class OneCTJRecord extends LogRecord {
+    protected long timestamp = 0;
     protected boolean containsLocks = false;
     protected boolean escalating = false;
 
     @Override
     public void clear() {
         super.clear();
+        timestamp = 0;
         containsLocks = false;
         escalating = false;
     }

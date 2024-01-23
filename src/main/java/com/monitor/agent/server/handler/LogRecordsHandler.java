@@ -71,7 +71,7 @@ public class LogRecordsHandler extends DefaultResponder {
 
                     try {
 
-                        ParserRecordsStorage storage = new ParserStreamStorage(output);
+                        ParserRecordsStorage storage = new ParserStreamStorage(output, PARSE_EXEC_TIMEOUT / 2);
                         RequestParameters parameters = getParameters();
 
                         // получаем признак "чернового" чтения - данные читаются с самого начала,

@@ -13,22 +13,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.monitor.parser.onec;
+package com.monitor.parser.reader;
 
 import com.monitor.parser.LogRecord;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  *
  * @author Алексей
  */
-public class OneCTJRecord extends LogRecord {
-    protected boolean containsLocks = false;
-    protected boolean escalating = false;
+public class ParserNullStorage implements ParserRecordsStorage {
+    
+    private int size;
+    
+    public ParserNullStorage() {
+    }
+
+    @Override
+    public void put(LogRecord record) throws IOException {
+        size++;
+    }
+
+    @Override
+    public void knock() throws Exception {
+    }
+    
+    @Override
+    public int size() {
+        return size;
+    }
 
     @Override
     public void clear() {
-        super.clear();
-        containsLocks = false;
-        escalating = false;
     }
+
+    @Override
+    public List<byte[]> getAll() {
+        return new ArrayList<>();
+    }
+    
 }

@@ -107,145 +107,156 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         boolean serverFound = false;
         boolean clusterFound = false;
         boolean infoBaseFound = false;
-
-        // перебираем все серверы, кластеры внутри серверов и информационные базы внутри кластеров;
-        // ищем совпадения по идентификаторам, переданным в качестве параметров (если не передали,
-        // то по всем из коллекции); для информационной базы получаем данные с помощью ras-агента
-        //
-        List<OneCServerInfo> serversInfo = new ArrayList<>();
-        for (OneCServerConfig serverConfig : config.getOneCServers()) {
-            if (serverId != null && !serverId.equals(serverConfig.getId())) {
-                continue;
-            }
-            serverFound = true;
-            boolean connected = false;
-            List<OneCClusterInfo> clustersInfo = new ArrayList<>();
-            for (OneCClusterConfig clusterConfig : serverConfig.getClusters()) {
-                if (clusterId != null && !clusterId.equals(clusterConfig.getId())) {
+        
+        try {
+            // перебираем все серверы, кластеры внутри серверов и информационные базы внутри кластеров;
+            // ищем совпадения по идентификаторам, переданным в качестве параметров (если не передали,
+            // то по всем из коллекции); для информационной базы получаем данные с помощью ras-агента
+            //
+            List<OneCServerInfo> serversInfo = new ArrayList<>();
+            for (OneCServerConfig serverConfig : config.getOneCServers()) {
+                if (serverConfig == null
+                        || serverConfig.getClusters() == null
+                        || serverId != null && !serverId.equals(serverConfig.getId())) {
                     continue;
                 }
-                clusterFound = true;
-                List<OneCInfoBaseInfo> infoBasesInfo = new ArrayList<>();
-                for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBases()) {
-                    if (infoBaseId != null && !infoBaseId.equals(infoBaseConfig.getId())) {
+                serverFound = true;
+                boolean connected = false;
+                List<OneCClusterInfo> clustersInfo = new ArrayList<>();
+                for (OneCClusterConfig clusterConfig : serverConfig.getClusters()) {
+                    if (clusterId != null && !clusterId.equals(clusterConfig.getId())) {
                         continue;
                     }
-                    infoBaseFound = true;
-                    
-                    if (!connected) {
-                        agent.connect(serverConfig.getRasAddress(), serverConfig.getRasPort(), 1000);
-                        if (!agent.isConnected()) {
-                            throw new IllegalStateException(String.format(
-                                    "Не удалось установить соединение с RAS-сервером %s:%s",
-                                    serverConfig.getRasAddress(),
-                                    serverConfig.getRasPort()));
+                    clusterFound = true;
+                    List<OneCInfoBaseInfo> infoBasesInfo = new ArrayList<>();
+                    for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBases()) {
+                        if (infoBaseId != null && !infoBaseId.equals(infoBaseConfig.getId())) {
+                            continue;
                         }
-                        connected = true;
-                    }
-                    
-                    OneCInfoBaseInfo infoBaseInfo = new OneCInfoBaseInfo(infoBaseConfig);
+                        infoBaseFound = true;
 
-                    OneCCluster cluster = agent.getCluster(clusterConfig.getName());
-                    if (cluster == null) {
-                        throw new IllegalStateException(String.format(
-                                "Не найден кластер %s сервера %s:%s",
-                                clusterConfig.getName(),
-                                serverConfig.getAddress(),
-                                serverConfig.getPort()));
-                    }
-                    cluster.setAdministrators(clusterConfig.getAdministrators());
-                    try {
-                        // обязательная аутентификация кластера (если не указан администратор кластера,
-                        // то всё равно надо аутентифицироваться с пустым логином/паролем)
-                        cluster.authenticate();
-                        
-                        // получение основных данных - информация по каждой сессии текущего кластера
-                        OneCInfoBase infoBase = cluster.getInfoBase(infoBaseConfig.getName());
-                        if (infoBase == null) {
+                        if (!connected) {
+                            agent.connect(serverConfig.getRasAddress(), serverConfig.getRasPort(), 1000);
+                            if (!agent.isConnected()) {
+                                throw new IllegalStateException(String.format(
+                                        "Не удалось установить соединение с RAS-сервером %s:%s",
+                                        serverConfig.getRasAddress(),
+                                        serverConfig.getRasPort()));
+                            }
+                            connected = true;
+                        }
+
+                        OneCInfoBaseInfo infoBaseInfo = new OneCInfoBaseInfo(infoBaseConfig);
+
+                        OneCCluster cluster = agent.getCluster(clusterConfig.getName());
+                        if (cluster == null) {
                             throw new IllegalStateException(String.format(
-                                    "Не найдена информационная база %s в кластере %s сервера %s:%s",
-                                    infoBaseConfig.getName(),
-                                    cluster.getName(),
+                                    "Не найден кластер %s сервера %s:%s",
+                                    clusterConfig.getName(),
                                     serverConfig.getAddress(),
                                     serverConfig.getPort()));
                         }
-                        List<ISessionInfo> sessions = cluster.getInfoBaseSessions(infoBase);
-                        
-                        List<Map<String, Object>> fsessions = new ArrayList<>();
-                        if (spid != null) {
-                            // возвращаем данные только сеанса с указанным соединением с БД
-                            for (ISessionInfo sessionInfo : sessions) {
-                                if (spid.equals(sessionInfo.getDbProcInfo())) {
+                        cluster.setAdministrators(clusterConfig.getAdministrators());
+                        try {
+                            // обязательная аутентификация кластера (если не указан администратор кластера,
+                            // то всё равно надо аутентифицироваться с пустым логином/паролем)
+                            cluster.authenticate();
+
+                            // получение основных данных - информация по каждой сессии текущего кластера
+                            OneCInfoBase infoBase = cluster.getInfoBase(infoBaseConfig.getName());
+                            if (infoBase == null) {
+                                throw new IllegalStateException(String.format(
+                                        "Не найдена информационная база %s в кластере %s сервера %s:%s",
+                                        infoBaseConfig.getName(),
+                                        cluster.getName(),
+                                        serverConfig.getAddress(),
+                                        serverConfig.getPort()));
+                            }
+                            List<ISessionInfo> sessions = cluster.getInfoBaseSessions(infoBase);
+
+                            List<Map<String, Object>> fsessions = new ArrayList<>();
+                            if (spid != null) {
+                                // возвращаем данные только сеанса с указанным соединением с БД
+                                for (ISessionInfo sessionInfo : sessions) {
+                                    if (spid.equals(sessionInfo.getDbProcInfo())) {
+                                        fsessions.add(toMap(sessionInfo, props, mapper));
+                                    } 
+                                }
+                            }
+                            else {
+                                // возвращаем данные всех сеансов текущей базы данных
+                                for (ISessionInfo sessionInfo : sessions) {
                                     fsessions.add(toMap(sessionInfo, props, mapper));
-                                } 
+                                }
                             }
+
+                            infoBaseInfo.setSessions(fsessions);
                         }
-                        else {
-                            // возвращаем данные всех сеансов текущей базы данных
-                            for (ISessionInfo sessionInfo : sessions) {
-                                fsessions.add(toMap(sessionInfo, props, mapper));
-                            }
+                        catch (Exception ex) {
+                            // не останавливаемся по ошибке на одной базе - можно получить данные других
+                            infoBaseInfo.setException(ex);
                         }
-                        
-                        infoBaseInfo.setSessions(fsessions);
-                    }
-                    catch (Exception ex) {
-                        infoBaseInfo.setException(ex);
+
+                        List<Map<String, Object>> sessions = infoBaseInfo.getSessions();
+                        if (sessions != null && !sessions.isEmpty() || infoBaseInfo.getException() != null) {
+                            infoBasesInfo.add(infoBaseInfo);
+                        }
                     }
 
-                    List<Map<String, Object>> sessions = infoBaseInfo.getSessions();
-                    if (sessions != null && !sessions.isEmpty()) {
-                        infoBasesInfo.add(infoBaseInfo);
+                    if (!infoBasesInfo.isEmpty()) {
+                        OneCClusterInfo clusterInfo = new OneCClusterInfo(clusterConfig);
+                        clusterInfo.setInfoBases(infoBasesInfo);
+                        clustersInfo.add(clusterInfo);
                     }
                 }
 
-                if (!infoBasesInfo.isEmpty()) {
-                    OneCClusterInfo clusterInfo = new OneCClusterInfo(clusterConfig);
-                    clusterInfo.setInfoBases(infoBasesInfo);
-                    clustersInfo.add(clusterInfo);
+                if (!clustersInfo.isEmpty()) {
+                    OneCServerInfo serverInfo = new OneCServerInfo(serverConfig);
+                    serverInfo.setClusters(clustersInfo);
+                    serversInfo.add(serverInfo);
+                }
+
+                if (agent.isConnected()) {
+                    agent.disconnect();
                 }
             }
 
-            if (!clustersInfo.isEmpty()) {
-                OneCServerInfo serverInfo = new OneCServerInfo(serverConfig);
-                serverInfo.setClusters(clustersInfo);
-                serversInfo.add(serverInfo);
+            if (!serverFound && serverId != null) {
+                throw new IllegalStateException(String.format(
+                        "Не найден сервер %s",
+                        serverId));
+            }
+            if (!clusterFound && clusterId != null) {
+                throw new IllegalStateException(String.format(
+                        "Не найден кластер %s",
+                        clusterId));
+            }
+            if (!infoBaseFound && infoBaseId != null) {
+                throw new IllegalStateException(String.format(
+                        "Не найдена информационная база %s",
+                        infoBaseId));
             }
 
-            if (agent.isConnected()) {
-                agent.disconnect();
-            }
-        }
-        
-        if (!serverFound && serverId != null) {
-            throw new IllegalStateException(String.format(
-                    "Не найден сервер %s",
-                    serverId));
-        }
-        if (!clusterFound && clusterId != null) {
-            throw new IllegalStateException(String.format(
-                    "Не найден кластер %s",
-                    clusterId));
-        }
-        if (!infoBaseFound && infoBaseId != null) {
-            throw new IllegalStateException(String.format(
-                    "Не найдена информационная база %s",
-                    infoBaseId));
-        }
-
-        try {
-        //  String json = mapper.writeValueAsString(serversInfo); // TODO: испльзовать в продуктиве
-            String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(serversInfo);
+            String json = mapper.writeValueAsString(serversInfo);
+        //  String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(serversInfo);
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.OK,
                     NanoHTTPD.MIME_PLAINTEXT,
                     json);
         }
-        catch (Exception ex) {
-            setStatus(NanoHTTPD.Response.Status.INTERNAL_ERROR);
-            return super.get(uriResource, urlParams, session);
+        catch (Exception e) {
+            try {
+                if (agent.isConnected()) {
+                    agent.disconnect();
+                }
+            }
+            catch (Exception ex) {
+            }
+            return NanoHTTPD.newFixedLengthResponse(
+                    NanoHTTPD.Response.Status.INTERNAL_ERROR,
+                    NanoHTTPD.MIME_PLAINTEXT,
+                    e.getMessage());
         }
-      
     }
     
     @Override

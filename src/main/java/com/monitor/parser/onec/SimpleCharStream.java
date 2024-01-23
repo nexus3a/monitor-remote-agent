@@ -10,7 +10,7 @@ public class SimpleCharStream {
 
     public static final boolean staticFlag = false; // является ли парсер статическим
     
-    private static final int BUFF_INCREMENT = 1024 * 32; // размер приращения буфера (если токен не помещается)
+    private static final int BUFF_INCREMENT = 1024 * 32 * 1000; // размер приращения буфера (если токен не помещается)
     private static final int MAX_TOKEN_LENGTH = 1024 * 32; // максимальное количество символов в токене по умолчанию
     private static final int MIN_XTRA_LENGTH = BUFF_INCREMENT * 2; // минимальное количество символов для xtra-области
     

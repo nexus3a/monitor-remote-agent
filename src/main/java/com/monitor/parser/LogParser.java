@@ -29,7 +29,7 @@ public interface LogParser {
     
     public void setRecordsStorage(ParserRecordsStorage storage);
     
-    public long getBytesRead();
+    public long getFilePos();
     
     public Throwable getException();
     

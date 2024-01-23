@@ -21,9 +21,10 @@ import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.LogFormat;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.PMParser;
-import com.monitor.parser.TJParser;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParserParameters;
+import com.monitor.parser.TJParser;
+import com.monitor.parser.onecf.FastTJParser;
 
 import java.io.File;
 import java.util.Collection;
@@ -54,7 +55,7 @@ public class ParserFileReader {
         this.draft = draft;
         this.parserParameters = parserParameters;
 
-        LogParser parser = new TJParser();
+        LogParser parser = new TJParser(); // new FastTJParser();
         parser.setRecordsStorage(records);
         parsers.put(LogFormat.ONE_C_TECH_JOURNAL, parser);
 
@@ -142,7 +143,7 @@ public class ParserFileReader {
                     logger.trace("  Error during reading file : " + ex.getMessage());
                 }
             }
-            bytesRead = parser.getBytesRead();
+            bytesRead = parser.getFilePos();
         }
         return pos + bytesRead;
     }

@@ -13,22 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.monitor.parser.onec;
+package com.monitor.parser;
 
-import com.monitor.parser.LogRecord;
+import java.util.HashMap;
 
 /**
  *
  * @author Алексей
  */
-public class OneCTJRecord extends LogRecord {
-    protected boolean containsLocks = false;
-    protected boolean escalating = false;
-
-    @Override
-    public void clear() {
-        super.clear();
-        containsLocks = false;
-        escalating = false;
-    }
+public abstract class LogRecord extends HashMap<String, Object> {
 }

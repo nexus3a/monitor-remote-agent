@@ -115,7 +115,8 @@ public class OneCTJ implements OneCTJConstants {
         System.out.println("test = " + DATE_FORMAT.format(new Date((63827362557274001L - MICROSECONDS_TO_1970 - 999983) / 1000L)));
 
         final OneCTJ parser = new OneCTJ();
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), 
+//      parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), 
+        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\SQL_Locks\\rphost_58776\\23103119.log"), 
                 "UTF-8",
                 new ParserParameters());
         parser.onParseEnd();
