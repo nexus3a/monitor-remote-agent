@@ -183,11 +183,6 @@ public class FastTJParser implements LogParser {
     private byte inLockMode;                       // режим парсинга управляемой блокировки
     private byte inLockModeNext;                   // режим парсинга управляемой блокировки для установки следующим
     private byte inLockModeBackup;                 // режим парсинга управляемой блокировки для восстановления
-    
-    
-    
-
-
 
     private final static String CONTEXT_EVENT_NAME = "Context";
     
@@ -231,9 +226,6 @@ public class FastTJParser implements LogParser {
     private long unfilteredCount = 0L;
     private long filteredCount;
     private int delay;
-    
-
-    
     
     
     private static List<File> filesFromDirectory(String directoryName) {
@@ -384,7 +376,6 @@ public class FastTJParser implements LogParser {
         public KeyValuesRecord() {
             for (int i = 0; i < kv.length; i++) kv[i] = new KeyValueBounds();
         }
-        
     }
     
     

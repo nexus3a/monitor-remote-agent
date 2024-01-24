@@ -58,6 +58,7 @@
                 <version>3.8.0</version>
                 <configuration>
                     <showDeprecation>false</showDeprecation>
+                    <debug>false</debug>
                 </configuration>
             </plugin>
         </plugins>
