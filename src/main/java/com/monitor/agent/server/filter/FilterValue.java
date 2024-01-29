@@ -55,6 +55,9 @@ public class FilterValue extends Filter {
         GREATER,
         GREATER_EQUALS,
         S_LIKE,
+        S_CONTAINS,
+        S_EMPTY,
+        S_FILLED,
         S_EQUALS,
         S_GREATER,
         S_GREATER_EQUALS,
@@ -80,6 +83,12 @@ public class FilterValue extends Filter {
             switch (s) {
                 case "like" :
                     return Operation.S_LIKE;
+                case "contains" :
+                    return Operation.S_CONTAINS;
+                case "empty" :
+                    return Operation.S_EMPTY;
+                case "filled" :
+                    return Operation.S_FILLED;
                 case "=" :
                     return Operation.EQUALS;
                 case ">" :
@@ -186,6 +195,12 @@ public class FilterValue extends Filter {
                     return "l>";
                 case L_GREATER_EQUALS :
                     return "l>=";
+                case S_CONTAINS :
+                    return "contains";
+                case S_EMPTY :
+                    return "empty";
+                case S_FILLED :
+                    return "filled";
             }
             return "like";
         }
@@ -289,6 +304,12 @@ public class FilterValue extends Filter {
         if (operation == Operation.S_LIKE) {
             pattern = Pattern.compile(strPattern.length() == 0 ? "^$" : strPattern);
         }
+        if (operation == Operation.S_EMPTY) {
+            if (!fields.containsKey("if-not-exists")) ifPropertyNotExists = true;
+        }
+        if (operation == Operation.S_FILLED) {
+            if (!fields.containsKey("if-not-exists")) ifPropertyNotExists = false;
+        }
         else if (operation == Operation.EQUALS) {
             operation = (lfe == null) ? Operation.L_EQUALS : ((dfe == null) ? Operation.D_EQUALS : Operation.S_EQUALS);
         }
@@ -375,6 +396,18 @@ public class FilterValue extends Filter {
             switch (operation) {
                 case S_LIKE: {
                     accepted = pattern.matcher(val).find();
+                    break;
+                }
+                case S_CONTAINS: {
+                    accepted = val.contains(strValue);
+                    break;
+                }
+                case S_EMPTY: {
+                    accepted = val.length() == 0;
+                    break;
+                }
+                case S_FILLED: {
+                    accepted = val.length() > 0;
                     break;
                 }
                 case D_EQUALS: {
@@ -498,7 +531,12 @@ public class FilterValue extends Filter {
         else {
             // условие должно выполняться для одного указанного свойства
             Object value = record.get(prop.name);
-            if (value == null || "".equals(value)) {
+            if (value == null) {
+                return ifPropertyNotExists;
+            }
+            if ("".equals(value)) {
+                if (operation == Operation.S_EMPTY) return true;
+                if (operation == Operation.S_FILLED) return false;
                 return ifPropertyNotExists;
             }
             result = acceptOne(value, propertyIndex);

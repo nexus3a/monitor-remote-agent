@@ -113,7 +113,7 @@ public class LogRecordsHandler extends DefaultResponder {
                         // используем значение 0 для указания того, что ограничений на длину нет
                         //
                         int maxTokenLen = Integer.parseInt((String) parameters.get("max-token-length", "-1"));
-                        maxTokenLen = (maxTokenLen == -1) ? 1024 * 32 : maxTokenLen;
+                        maxTokenLen = (maxTokenLen == -1) ? ParserParameters.MAX_TOKEN_LENGTH : maxTokenLen;
 
                         // получаем задержку времени, которую можно использовать для уменьшения нагрузки
                         // на процессор при разборе файлов лога - чем больше задержка, тем меньше нагрузка,

@@ -117,7 +117,7 @@ public class OneCTJ implements OneCTJConstants {
         final OneCTJ parser = new OneCTJ();
 //      parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), 
 //      parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\SQL_Locks\\rphost_58776\\23103119.log"), 
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log"), 
+        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24012823.log"), 
                 "UTF-8",
                 new ParserParameters());
         parser.onParseEnd();
@@ -146,8 +146,8 @@ public class OneCTJ implements OneCTJConstants {
         calendar.set(Calendar.MILLISECOND, 0);
         microsecondsBase = calendar.getTimeInMillis() * 1000L + MICROSECONDS_TO_1970;
 
-        includeLockRecords = !parameters.getExcludeData().contains("lock-fields");
-        jj_input_stream.setMaxTokenLength(parameters.getMaxTokenLength());
+        includeLockRecords = parameters == null ? true : !parameters.getExcludeData().contains("lock-fields");
+        jj_input_stream.setMaxTokenLength(parameters == null ? ParserParameters.MAX_TOKEN_LENGTH : parameters.getMaxTokenLength());
 
         logRecord.clear();
         readyLogRecord.clear();

@@ -24,16 +24,21 @@ import java.util.Set;
  */
 public class ParserParameters {
     
+    public static final int MAX_TOKEN_LENGTH = 1024 * 32; // 32 K
+    public static final int DELAY = 0;
+    
     private Set<String> excludeData;
+    private boolean logParseExceptions;
     private int maxTokenLength;
     private String parserErrorLog;
     private int delay;
 
     public ParserParameters() {
         excludeData = new HashSet<>();
-        maxTokenLength = 1024 * 32;
+        logParseExceptions = true;
+        maxTokenLength = MAX_TOKEN_LENGTH;
         parserErrorLog = "logs/parser-errors";
-        delay = 0;
+        delay = DELAY;
     }
 
     public Set<String> getExcludeData() {
@@ -66,6 +71,14 @@ public class ParserParameters {
 
     public void setDelay(int delay) {
         this.delay = delay;
+    }
+
+    public void setLogParseExceptions(boolean logParseExceptions) {
+        this.logParseExceptions = logParseExceptions;
+    }
+
+    public boolean logParseExceptions() {
+        return logParseExceptions;
     }
     
 }

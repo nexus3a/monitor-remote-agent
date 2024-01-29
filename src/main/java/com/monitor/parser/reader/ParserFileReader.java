@@ -55,7 +55,7 @@ public class ParserFileReader {
         this.draft = draft;
         this.parserParameters = parserParameters;
 
-        LogParser parser = new TJParser(); // new FastTJParser();
+        LogParser parser = new FastTJParser(); // new TJParser();
         parser.setRecordsStorage(records);
         parsers.put(LogFormat.ONE_C_TECH_JOURNAL, parser);
 

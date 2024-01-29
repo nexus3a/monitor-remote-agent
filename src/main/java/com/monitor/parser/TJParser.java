@@ -25,6 +25,7 @@ import com.monitor.parser.onec.OneCTJRecord;
 import com.monitor.parser.onec.OneCTJ;
 import com.monitor.parser.onec.TokenMgrError;
 import com.monitor.parser.reader.ParserListStorage;
+import com.monitor.parser.reader.ParserNullStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -53,11 +54,14 @@ public class TJParser extends OneCTJ implements LogParser {
     
     @SuppressWarnings("SleepWhileInLoop")
     public static void main(String[] args) throws IOException, InterruptedException {
-        ParserListStorage recordsStorage = new ParserListStorage();
+        ParserRecordsStorage recordsStorage = new ParserNullStorage(); // new ParserListStorage();
         TJParser parser = new TJParser();
         parser.setRecordsStorage(recordsStorage);
         
-        List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70");
+//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72");
+        List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Transactions\\rphost_31828\\23103119.log");
+//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456");
+//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log");
 
         long duration = 0;
         long TESTS_COUNT = 1; // 100;
@@ -70,7 +74,7 @@ public class TJParser extends OneCTJ implements LogParser {
                 System.out.println("file " + file.getAbsolutePath());
                 long m = new Date().getTime();
                 try {
-                    parser.parse(state, "UTF-8", state.getPointer(), 999999999 /* 1024 */, null, null);
+                    parser.parse(state, "UTF-8", state.getPointer(), 2 + 0 * 999999999 /* 1024 */, null, null);
                 }
                 catch (ParseException | TokenMgrError ex) {
                     System.out.println("!!! parse error: " + ex.getMessage());
@@ -204,7 +208,7 @@ public class TJParser extends OneCTJ implements LogParser {
         long pos = fromPosition;
         filteredCount = 0L;
         readyBytesRead = 0;
-        delay = parameters.getDelay();
+        delay = parameters == null ? 0 : parameters.getDelay();
         exception = null;
         String fileName = state.getFile().getName();
         boolean isTJName = fileName.matches("\\d{8}.*\\.log");

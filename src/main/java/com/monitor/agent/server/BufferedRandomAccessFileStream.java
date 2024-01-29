@@ -83,6 +83,8 @@ public class BufferedRandomAccessFileStream extends InputStream {
 
     /**
      * Reads and returns only one byte from buffer (not int)
+     * @return 
+     * @throws java.io.IOException
      */
     public final byte bread() throws IOException {
         if (bufpos >= bufend && fillBuffer() < 0) {
@@ -157,9 +159,6 @@ public class BufferedRandomAccessFileStream extends InputStream {
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
     public String readString(int len, Charset chs) throws IOException {
         if (len <= bufend - bufpos) {
             String result = new String(buffer, bufpos, len, chs);
@@ -169,6 +168,27 @@ public class BufferedRandomAccessFileStream extends InputStream {
         byte[] strb = new byte[len];
         read(strb, 0, len);
         return new String(strb, 0, len, chs);
+    }
+
+    public String readStripNewLine(int len, Charset chs) throws IOException {
+        if (len == 0) return "";
+        int from, to;
+        byte[] strb;
+        if (len <= bufend - bufpos) {
+            strb = buffer;
+            from = bufpos;
+            bufpos += len;
+            to = bufpos - 1;
+        }
+        else {
+            strb = new byte[len];
+            from = 0;
+            to = read(strb, 0, len) - 1;
+        }
+        while (from <= to && (strb[from] == '\r' || strb[from] == '\n')) from++;
+        while (from <  to && (strb[to] == '\r' || strb[to] == '\n')) to--;
+        if (from >= to) return "";
+        return new String(strb, from, (to - from + 1), chs);
     }
 
     public long getFilePointer() throws IOException {

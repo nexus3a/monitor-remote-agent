@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /*
@@ -58,7 +59,7 @@ public class FastTJParser implements LogParser {
     
     private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 100; // 200Mb 
     private static final boolean DEBUG_SYMBOLS = false;
-    private static final boolean DEBUG_RECORDS = false;
+    private static final boolean DEBUG_RECORDS = true;
     
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
@@ -114,20 +115,12 @@ public class FastTJParser implements LogParser {
     private byte mode = MODE_TIMESTAMP;
     private byte valueMode = VALUE_MODE_GENERAL;
     private long firstBytePos = 0;
+    private long startPos = 0;
     private long filePos = 0;
     private long fileLinesRead = 0;
 
-    private final byte[] b2 = new byte[2];
-    private final byte[] b3 = new byte[3];
-    private final byte[] b4 = new byte[4];
+    private byte icc = 0;  // текущий однобайтный UTF-символ
     
-    private byte icc = 0;  // текущий однобайтный символ
-    private byte ic2 = 0;
-    private byte ic3 = 0;
-    private byte ic4 = 0;
-    
-    private byte bytesInSym;                 // количество байтов в прочитанном UTF-8 символе
-
                                              // Key-Value Record - номера позиций файла с началом и окончанием 
                                              // ключа и значения для одной записи лога; предполагаем, что количество
                                              // пар ключ-значение в одной записи не более 64
@@ -141,9 +134,6 @@ public class FastTJParser implements LogParser {
     private boolean kvsh = false;            // на какой из рабочих массивов ссылается kvrc - на kvr0 или kvr0
     
     private byte kvcc;                       // количество-1 прочитанных пар ключ-значение в текущей записи лога kvrc
-    
-    private final StringConstructor sc = new StringConstructor();
-    
     
     // locks variables
        
@@ -161,6 +151,7 @@ public class FastTJParser implements LogParser {
     private LockElement lckel = new LockElement(); // текущий заполняемый элемент управляемой блокировки
     private Token lckelt = new Token();            // текущий токен заполняемого элемента управляемой блокировки
     
+    byte tokenKind = TOKEN_KIND_UNDEFINED;
     long tokenBegin = 0;
     int  tokenRowLevel = 0;
     
@@ -193,14 +184,20 @@ public class FastTJParser implements LogParser {
     private final static String LEVEL_PROP_NAME = "level";
     private final static String START_DATE_TIME_PROP_NAME = "startDateTime";
     private final static String ONLY_TIME_PROP_NAME = "onlyTime";
+    private final static String SQL_PROP_NAME = "Sql";
     private final static String SQL_PARAMETERS_PROP_NAME = "Sql.p_N";
+    private final static String SQL_PARAMETERS_HASH_PROP_NAME = "Sql.p_N.hash()";
     private final static String DATE_TIME_PROP_NAME = "dateTime";
     private final static String CONTEXT_PROP_NAME = "Context";
+    private final static String CONTEXT_HASH_PROP_NAME = "Context.hash()";
+    private final static String CONTEXT_LAST_LINE_PROP_NAME = "ContextLastLine";
+    private final static String CONTEXT_LAST_LINE_HASH_PROP_NAME = "ContextLastLine.hash()";
     private final static String PROCESS_NAME_PROP_NAME = "p:processName";
     private final static String COMPUTER_NAME_PROP_NAME = "t:computerName";
     private final static String USR_PROP_NAME = "Usr";
     private final static String ESCALATING_PROP_NAME = "escalating";
-    private final static String CONTEXT_LAST_LINE_PROP_NAME = "ContextLastLine";
+    private final static String WAIT_CONNECTIONS_PROP_NAME = "WaitConnections";
+    private final static String LKSRC_PROP_NAME = "lksrc";
 
     private final static String LOCKS_PROP_NAME = "Locks";
     private final static String LOCK_SPACE_NAME_PROP_NAME = "space";
@@ -208,6 +205,8 @@ public class FastTJParser implements LogParser {
     private final static String LOCK_SPACE_RECORDS_PROP_NAME = "records";
     private final static String LOCK_SPACE_RECORDS_COUNT_PROP_NAME = "recordsCount";
     private final static String LOCK_GRANULARITY_PROP_NAME = "granularity";
+    
+    private final static String[] EMPTY_STRING_ARRAY = new String[0];
 
     private String syear, smonth, sday, shours, sminutes, sseconds, yyyyMMddhh;
     private long mm, ss, ms, timestamp;
@@ -223,9 +222,12 @@ public class FastTJParser implements LogParser {
     private PredefinedFields addFields;
     private Filter filter;
     private int maxCount;
+    private long validBytesRead = 0L;
     private long unfilteredCount = 0L;
     private long filteredCount;
     private int delay;
+    private int maxTokenLength;
+    private int getTokenLength;
     
     
     private static List<File> filesFromDirectory(String directoryName) {
@@ -309,10 +311,93 @@ public class FastTJParser implements LogParser {
         return workdir;
     }
 
-    
-    private static String right(String str, int count) {
+
+    private String right(String str, int count) {
         return str.substring(str.length() - count);
-    }    
+    }
+
+    
+    private int indexOfNonWhitespace(byte[] value) {
+        int length = value.length;
+        int left = 0;
+        while (left < length) {
+            char ch = (char) (value[left] & 0xff);
+            if (ch != ' ' && ch != '\t' && !Character.isWhitespace(ch)) {
+                break;
+            }
+            left++;
+        }
+        return left;
+    }
+
+    
+    private int lastIndexOfNonWhitespace(byte[] value) {
+        int length = value.length;
+        int right = length;
+        while (0 < right) {
+            char ch = (char) (value[right - 1] & 0xff);
+            if (ch != ' ' && ch != '\t' && !Character.isWhitespace(ch)) {
+                break;
+            }
+            right--;
+        }
+        return right;
+    }
+
+    
+    private String strip(String value) {
+        byte[] btvalue = value.getBytes();
+        int left = indexOfNonWhitespace(btvalue);
+        if (left == btvalue.length) {
+            return "";
+        }
+        int right = lastIndexOfNonWhitespace(btvalue);
+        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left) : value;
+    }
+
+    
+    protected String lastLine(String str) {
+        int markerPos = str.length();
+        while (true) {
+            while (--markerPos >= 0 && str.charAt(markerPos) == '\n') {
+            }
+            if (markerPos < 0) {
+                return "";
+            }
+            int last = markerPos;
+            markerPos = str.lastIndexOf('\n', last) + 1;
+            String result = strip(str.substring(markerPos, last + 1));
+            if (!result.isEmpty()) {
+                return result;
+            }
+        }
+    }
+
+    
+    private String[] uniqueArray(String str) {
+        if (!str.contains(",")) {
+            String[] result = new String[1];
+            result[0] = str;
+            return result;
+        }
+        String[] splitted = str.replaceAll("['\"]", "").split(",");
+        HashSet<String> set = new HashSet(splitted.length);
+        for (String s : splitted) {
+            set.add(s);
+        }
+        if (set.size() == splitted.length) {
+            return splitted;
+        }
+        String[] result = new String[set.size()];
+        set.toArray(result);
+        return result;
+    }
+    
+    
+    private String getRidOfUnprintables(String str) {
+        Matcher matcher = UNPRINTABLE_PATTERN.matcher(str);
+        return matcher.replaceAll("?");
+    }
 
     
     @Override
@@ -328,7 +413,7 @@ public class FastTJParser implements LogParser {
     // в которой последний раз встретилась ошибка
     //
     public long getFilePos() {
-        return kvrp.bytesRead;
+        return validBytesRead - startPos;
     }
 
     
@@ -353,21 +438,18 @@ public class FastTJParser implements LogParser {
         public long ke = 0;
         public long vb = 0;
         public long ve = 0;
+        public String kv = null; // значение ключа строкой
         public boolean isLocks = false;
-        public boolean isContext = false;
-        public boolean isProcessName = false;
-        public boolean isComputerName = false;
-        public boolean isUsr = false;
-        public boolean isEscalating = false;
     }
     
     
     private class KeyValuesRecord {
-        public KeyValueBounds[] kv = new KeyValueBounds[64];
-        public OneCTJRecord lr = new OneCTJRecord();
+        public final KeyValueBounds[] kv = new KeyValueBounds[64];
+        public final OneCTJRecord lr = new OneCTJRecord();
         public long bytesRead = 0;                           // поизиция конца записи в файле
         public boolean isReadyToStore = false;               // готова к помещению в хранилище?
         public boolean isContext = false;                    // event == Context?
+        public boolean isEmpty = true;                       // содержит ли записи
         public Lock lck = new Lock();                        // данные значения ключа Locks (если имеется в записи ЖР)
         public String context = null;                        // значение поля Context (если есть)
         public String processName = null;                    // значение поля p:processName (если есть)
@@ -375,6 +457,14 @@ public class FastTJParser implements LogParser {
         public String usr = null;                            // значение поля Usr (если есть)
         public KeyValuesRecord() {
             for (int i = 0; i < kv.length; i++) kv[i] = new KeyValueBounds();
+        }
+        public void clear() {
+            lck = new Lock();
+            lr.clear();
+            bytesRead = 0;
+            isReadyToStore = isContext = false;
+            isEmpty = true;
+            context = processName = computerName = usr = null;
         }
     }
     
@@ -398,10 +488,11 @@ public class FastTJParser implements LogParser {
         public ArrayList<Token> letl;  // lock element tokens list
         public int tc;                 // tokens count
         public int maxtc;              // maximum tokens count after previous iterations
+        public int reinitCount;        // reinit() call count
         
         public LockElement() {
             letl = new ArrayList<>();
-            tc = maxtc = 0;
+            tc = maxtc = reinitCount = 0;
         }
         
         public Token addToken(long tb, long te, byte tk, int tl) {
@@ -422,7 +513,15 @@ public class FastTJParser implements LogParser {
         }
         
         public void reinit() {
+            reinitCount++;
             tc = 0;
+            if (reinitCount == 1000) {
+                // каждые 1000 очисток полностью очищаем буфер токенов
+                reinitCount = 0;
+                maxtc = 0;
+                letl = new ArrayList<>();
+                //letl.clear();
+            }
         }
     }
     
@@ -431,10 +530,11 @@ public class FastTJParser implements LogParser {
         public ArrayList<LockElement> lel; // lock elements list
         public int lec;                    // lock elements count
         public int maxlec;                 // maximum lock elements count after previous iterations
+        public int reinitCount;        // reinit() call count
         
         public Lock() {
             lel = new ArrayList<>();
-            lec = maxlec = 0;
+            lec = maxlec = reinitCount = 0;
         }
         
         public LockElement addLockElement() {
@@ -452,7 +552,16 @@ public class FastTJParser implements LogParser {
         }
         
         public Lock reinit() {
+            reinitCount++;
             lec = 0;
+            if (reinitCount == 1000) {
+                // каждые 1000 очисток полностью очищаем буфер элементов блокировки
+                reinitCount = 0;
+                maxlec = 0;
+                for (LockElement lelm : lel) { lelm.reinit(); }
+                lel = new ArrayList<>();
+                //lel.clear();
+            }
             return this;
         }
     }
@@ -463,11 +572,13 @@ public class FastTJParser implements LogParser {
         private final byte[] src;     // байты исходной строки
         private int[] searches;       // список следующих проверяемых позищий в src (когда предыдущие подошли)
         private int maxSearch;        // id последнего рабочего элемента в списке позиций поиска (<= searches.length)
+        private final byte src0;
 
         public ContainsMatcher(String src) {
             this.src = src.getBytes(UTF8);
             this.searches = new int[] {0, 0};
             this.maxSearch = 0;
+            src0 = this.src.length > 0 ? this.src[0] : 0;
         }
         
         public int newSearch() {
@@ -662,11 +773,13 @@ public class FastTJParser implements LogParser {
     private class EqualsMatcher {
         
         private final byte[] src;     // байты исходной строки
+        private final int srcLen;
         private int srcPos;           // проверяемая позиция исходной строки
         private boolean matches;
 
         public EqualsMatcher(String src) {
             this.src = src.getBytes(UTF8);
+            this.srcLen = this.src.length;
             this.srcPos = 0;
             this.matches = true;
         }
@@ -677,11 +790,11 @@ public class FastTJParser implements LogParser {
         }
         
         public int length() {
-            return src.length;
+            return srcLen;
         }
         
         public boolean matches() {
-            return matches && srcPos == src.length;
+            return matches && srcPos == srcLen;
         }
         
         // если на момент проверки очередного символа b, выраженного в байтах,
@@ -692,7 +805,7 @@ public class FastTJParser implements LogParser {
         //
         public boolean checkNext(byte[] b) {
             if (!matches) { return false; }
-            if (srcPos + b.length > src.length) { 
+            if (srcPos + b.length > srcLen) { 
                 matches = false;
                 return false;
             }
@@ -708,7 +821,7 @@ public class FastTJParser implements LogParser {
         
         public boolean checkNext1(byte b1) {
             if (!matches) { return false; }
-            if (srcPos + 1 > src.length) { 
+            if (srcPos + 1 > srcLen) { 
                 matches = false;
                 return false;
             }
@@ -722,7 +835,7 @@ public class FastTJParser implements LogParser {
         
         public boolean checkNext2(byte b1, byte b2) {
             if (!matches) { return false; }
-            if (srcPos + 2 > src.length) { 
+            if (srcPos + 2 > srcLen) { 
                 matches = false;
                 return false;
             }
@@ -741,7 +854,7 @@ public class FastTJParser implements LogParser {
         
         public boolean checkNext3(byte b1, byte b2, byte b3) {
             if (!matches) { return false; }
-            if (srcPos + 3 > src.length) { 
+            if (srcPos + 3 > srcLen) { 
                 matches = false;
                 return false;
             }
@@ -765,7 +878,7 @@ public class FastTJParser implements LogParser {
         
         public boolean checkNext4(byte b1, byte b2, byte b3, byte b4) {
             if (!matches) { return false; }
-            if (srcPos + 4 > src.length) { 
+            if (srcPos + 4 > srcLen) { 
                 matches = false;
                 return false;
             }
@@ -809,11 +922,13 @@ public class FastTJParser implements LogParser {
     
     public FastTJParser() {
         recordsStorage = new ParserNullStorage(); // new ParserListStorage();
+        validBytesRead = 0;
         unfilteredCount = 0;
         filteredCount = 0;
         fileLinesRead = 0;
         exception = null;
         delay = 0;
+        maxTokenLength = Integer.MAX_VALUE;
 
         kvcc = -1;
         stream = null;
@@ -832,11 +947,16 @@ public class FastTJParser implements LogParser {
     }
 
     
-    private boolean onLogRecord(OneCTJRecord logRecord) {
+    private boolean onLogRecord(KeyValuesRecord keyValueRecord) {
         if (filteredCount >= maxCount) {
             return false;
         }
+        if (keyValueRecord.isEmpty) {
+            return true;
+        }
         unfilteredCount++;
+        validBytesRead = keyValueRecord.bytesRead - 1;
+        OneCTJRecord logRecord = keyValueRecord.lr;
         if (logRecord.containsLocks) {
             // отдельная обработка, если у события есть свойство "Locks":
             // каждая запись пространства блокировок со своими данными
@@ -947,7 +1067,7 @@ public class FastTJParser implements LogParser {
                     //
                     lockMember.put(LOCK_GRANULARITY_PROP_NAME, tableGranularity ? "table" : "field");
 
-                    lockMember.put(LOCK_SPACE_RECORDS_PROP_NAME + ".hash()", String.valueOf(lockMemberRecords.hashCode()));
+                    lockMember.put(LOCK_SPACE_RECORDS_PROP_NAME + ".hash()", lockMemberRecords.hashCode());
                     logRecord.put(LOCKS_PROP_NAME, lockMember);
                     result = filterAndStoreRecord(logRecord) && result; // здесь && result должен быть в конце!
                 }
@@ -992,26 +1112,38 @@ public class FastTJParser implements LogParser {
 
     
     private boolean buildRecord() throws IOException {
-        kvrc.lr.clear();
-        kvrc.lr.timestamp = timestamp;
+        OneCTJRecord logrec = kvrc.lr;
+        logrec.clear();
+        logrec.timestamp = timestamp;
         
         String smmss = sminutes + sseconds;
-        kvrc.lr.put(DATE_TIME_PROP_NAME, yyyyMMddhh + smmss);
-        kvrc.lr.put(ONLY_TIME_PROP_NAME, shours + smmss);
+        logrec.put(DATE_TIME_PROP_NAME, yyyyMMddhh + smmss);
+        logrec.put(ONLY_TIME_PROP_NAME, shours + smmss);
         
-        kvrc.lr.put(TIMESTAMP_PROP_NAME, String.valueOf(timestamp));
-        kvrc.lr.put(DURATION_PROP_NAME, String.valueOf(duration));
-        kvrc.lr.put(START_DATE_TIME_PROP_NAME, DATE_FORMAT.format(new Date((timestamp - MICROSECONDS_TO_1970 - duration) / 1000L)));
+        logrec.put(TIMESTAMP_PROP_NAME, String.valueOf(timestamp));
+        logrec.put(DURATION_PROP_NAME, String.valueOf(duration));
+        logrec.put(START_DATE_TIME_PROP_NAME, DATE_FORMAT.format(new Date((timestamp - MICROSECONDS_TO_1970 - duration) / 1000L)));
         
-        kvrc.lr.put(EVENT_PROP_NAME, eventName);
-        kvrc.lr.put(EVENT_HASH_PROP_NAME, String.valueOf(eventName.hashCode())); // TODO: надо?
+        logrec.put(EVENT_PROP_NAME, eventName);
+        logrec.put(EVENT_HASH_PROP_NAME, eventName.hashCode()); // TODO: надо?
         
-        kvrc.lr.put(LEVEL_PROP_NAME, eventLevel);
+        logrec.put(LEVEL_PROP_NAME, eventLevel);
         
+        if (DEBUG_RECORDS) {
+            System.out.println(DATE_TIME_PROP_NAME + "=" + logrec.get(DATE_TIME_PROP_NAME));
+            System.out.println(ONLY_TIME_PROP_NAME + "=" + logrec.get(ONLY_TIME_PROP_NAME));
+            System.out.println(TIMESTAMP_PROP_NAME + "=" + logrec.get(TIMESTAMP_PROP_NAME));
+            System.out.println(DURATION_PROP_NAME + "=" + logrec.get(DURATION_PROP_NAME));
+            System.out.println(START_DATE_TIME_PROP_NAME + "=" + logrec.get(START_DATE_TIME_PROP_NAME));
+            System.out.println(EVENT_PROP_NAME + "=" + logrec.get(EVENT_PROP_NAME));
+            System.out.println(LEVEL_PROP_NAME + "=" + logrec.get(LEVEL_PROP_NAME));
+        }                
+
         kvrc.bytesRead = filePos;
         kvrc.isReadyToStore = false;
-        kvrc.lr.escalating = false;
-        kvrc.lr.containsLocks = false;
+        kvrc.isEmpty = false;
+        logrec.escalating = false;
+        logrec.containsLocks = false;
         
         kvrc.context = null;
         kvrc.processName = null;
@@ -1022,73 +1154,114 @@ public class FastTJParser implements LogParser {
         for (byte kv = 0; kv <= kvcc; kv++) {
             KeyValueBounds kvi = kvrc.kv[kv];
 
-            int kl = (int)(kvi.ke - kvi.kb);
-            stream.seek(kvi.kb);
-            String k = stream.readString(kl, UTF8);
-
-            if (kvi.vb > 0) {
-                if (!kvi.isLocks) {
-                    int vl = (int)(kvi.ve - kvi.vb);
-                    stream.seek(kvi.vb);
-                    String v = stream.readString(vl, UTF8);
-                    kvrc.lr.put(k, v);
-                    kvrc.lr.put(k + ".hash()", String.valueOf(v.hashCode()));
-                    if (kvi.isContext) kvrc.context = v;
-                    else if (kvi.isProcessName) kvrc.processName = v;
-                    else if (kvi.isComputerName) kvrc.computerName = v;
-                    else if (kvi.isUsr) kvrc.usr = v;
-                    else if (kvi.isEscalating) kvrc.lr.escalating = true;
-                    if (DEBUG_RECORDS) { System.out.println(k + "=" + v); }                
-                }
-                else {
-                    // для значения ключа Locks
-                    ArrayList<HashMap<String, Object>> lckm = new ArrayList<>();
-                    HashMap<String, Object> lelm;
-                    Lock lock = kvrc.lck;
-                    for (int j = 0; j < lock.lec; j++) {
-                        LockElement lel = lock.lel.get(j);
-                        lelm = new HashMap<>();
-                        ArrayList<HashMap<String, String>> rl = new ArrayList<>();  // lock element records list
-                        HashMap<String, String> rm = null;                          // lock element record
-                        String rk = null;                                           // lock element record key
-                        int rlvl = -1;                                              // lock element record row level
-                        lelm.put(LOCK_SPACE_RECORDS_PROP_NAME, rl);
-                        for (int i = 0; i < lel.tc; i++) {
-                            Token lelt = lel.letl.get(i);
-                            int vl = (int)(lelt.te - lelt.tb);
-                            stream.seek(lelt.tb);
-                            String v = stream.readString(vl, UTF8);
-                            switch (lelt.tk) {
-                                case TOKEN_KIND_LOCK_SPACE:
-                                    lelm.put(LOCK_SPACE_NAME_PROP_NAME, v);
-                                    break;
-                                case TOKEN_KIND_LOCK_TYPE:
-                                    lelm.put(LOCK_SPACE_TYPE_PROP_NAME, v);
-                                    break;
-                                case TOKEN_KIND_LOCK_KEY:
-                                    if (rlvl != lelt.tl) {
-                                        rlvl = lelt.tl;
-                                        rm = new HashMap<>();
-                                        rl.add(rm);
-                                    }
-                                    rk = v;
-                                    break;
-                                case TOKEN_KIND_LOCK_VALUE:
-                                    assert rm != null;
-                                    rm.put(rk, v);
-                                    break;
-                            }
+            String k = kvi.kv;
+            
+            if (kvi.isLocks) {
+                // для значения ключа Locks
+                ArrayList<HashMap<String, Object>> lckm = new ArrayList<>();
+                HashMap<String, Object> lelm;
+                Lock lock = kvrc.lck;
+                for (int j = 0; j < lock.lec; j++) {
+                    LockElement lel = lock.lel.get(j);
+                    lelm = new HashMap<>();
+                    ArrayList<HashMap<String, String>> rl = new ArrayList<>();  // lock element records list
+                    HashMap<String, String> rm = null;                          // lock element record
+                    String rk = null;                                           // lock element record key
+                    int rlvl = -1;                                              // lock element record row level
+                    lelm.put(LOCK_SPACE_RECORDS_PROP_NAME, rl);
+                    for (int i = 0; i < lel.tc; i++) {
+                        Token lelt = lel.letl.get(i);
+                        int vl = (int)(lelt.te - lelt.tb);
+                        stream.seek(lelt.tb);
+                        String v = stream.readString(vl, UTF8);
+                        switch (lelt.tk) {
+                            case TOKEN_KIND_LOCK_SPACE:
+                                lelm.put(LOCK_SPACE_NAME_PROP_NAME, v);
+                                break;
+                            case TOKEN_KIND_LOCK_TYPE:
+                                lelm.put(LOCK_SPACE_TYPE_PROP_NAME, v);
+                                break;
+                            case TOKEN_KIND_LOCK_KEY:
+                                if (rlvl != lelt.tl) {
+                                    rlvl = lelt.tl;
+                                    rm = new HashMap<>();
+                                    rl.add(rm);
+                                }
+                                rk = v;
+                                break;
+                            case TOKEN_KIND_LOCK_VALUE:
+                                assert rm != null;
+                                rm.put(rk, v);
+                                break;
                         }
-                        lelm.put(LOCK_SPACE_RECORDS_COUNT_PROP_NAME, rl.size());
-                        lckm.add(lelm);
                     }
-                    kvrc.lr.containsLocks = true;
-                    kvrc.lr.put(k, lckm);
-                    if (DEBUG_RECORDS) { System.out.println(k + "=" + lckm); }
+                    lelm.put(LOCK_SPACE_RECORDS_COUNT_PROP_NAME, rl.size());
+                    lckm.add(lelm);
                 }
+                logrec.containsLocks = true;
+                logrec.put(k, lckm);
+                if (DEBUG_RECORDS) { System.out.println(k + "=" + lckm); }
+            }
+            else if (kvi.vb > 0) {
+                int vl = (int)(kvi.ve - kvi.vb);
+                int l = vl > getTokenLength ? maxTokenLength : vl;
+                stream.seek(kvi.vb);
+                String vs = stream.readStripNewLine(l, UTF8);
+                if (l != vl) {
+                    vs = vs + " (... ещё " + (vl - l) + " симв.)";
+                }
+                Object vo = vs;
+                switch (k) {
+                    case CONTEXT_PROP_NAME:
+                        kvrc.context = vs;
+                        String lastline = lastLine(vs);
+                        logrec.put(CONTEXT_LAST_LINE_PROP_NAME, lastline);
+                        logrec.put(CONTEXT_LAST_LINE_HASH_PROP_NAME, lastline.hashCode());
+                        if (DEBUG_RECORDS) {
+                            System.out.println(CONTEXT_LAST_LINE_PROP_NAME + "=" + logrec.get(CONTEXT_LAST_LINE_PROP_NAME));
+                        }
+                        break;
+                    case SQL_PROP_NAME:
+                        int markerPos = vs.indexOf(SQL_PARAMETERS_PROP_MARKER);
+                        if (markerPos >= 0) {
+                            String sqlParams = vs.substring(markerPos + 1, vs.length());
+                            vo = vs.substring(0, markerPos);
+                            logrec.put(SQL_PARAMETERS_PROP_NAME, sqlParams);
+                            logrec.put(SQL_PARAMETERS_HASH_PROP_NAME, sqlParams.hashCode());
+                        }
+                        if (DEBUG_RECORDS) {
+                            System.out.println(SQL_PARAMETERS_PROP_NAME + "=" + logrec.get(SQL_PARAMETERS_PROP_NAME));
+                        }
+                        break;
+                    case PROCESS_NAME_PROP_NAME:
+                        kvrc.processName = vs;
+                        break;
+                    case COMPUTER_NAME_PROP_NAME:
+                        kvrc.computerName = vs;
+                        break;
+                    case USR_PROP_NAME:
+                        kvrc.usr = vs;
+                        break;
+                    case ESCALATING_PROP_NAME:
+                        logrec.escalating = true;
+                        break;
+                    case WAIT_CONNECTIONS_PROP_NAME:
+                        vo = uniqueArray(vs);
+                        break;
+                    case LKSRC_PROP_NAME:
+                        vo = uniqueArray(vs);
+                        break;
+                    default:
+                        vo = getRidOfUnprintables(vs);
+                        break;
+                }
+                logrec.put(k, vo);
+                logrec.put(k + ".hash()", vo.hashCode());
+                if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
             }
             else {
-                kvrc.lr.put(k, null);
+                logrec.put(k, WAIT_CONNECTIONS_PROP_NAME.equals(k) ? EMPTY_STRING_ARRAY : null);
+                logrec.put(k + ".hash()", 0);
                 if (DEBUG_RECORDS) { System.out.println(k); }
             }
 
@@ -1107,10 +1280,10 @@ public class FastTJParser implements LogParser {
                         && (kvrc.processName != null ? kvrc.processName.equals(kvrp.processName) : true)
                         && (kvrc.computerName != null ? kvrc.computerName.equals(kvrp.computerName) : true)
                         && (kvrc.usr != null ? kvrc.usr.equals(kvrp.usr) : true)) {
-                    kvrp.lr.put("Context", kvrc.lr.get("Context"));
-                    kvrp.lr.put("Context.hash()", kvrc.lr.get("Context.hash()"));
-                    kvrp.lr.put("ContextLastLine", kvrc.lr.get("ContextLastLine"));
-                    kvrp.lr.put("ContextLastLine.hash()", kvrc.lr.get("ContextLastLine.hash()"));
+                    kvrp.lr.put(CONTEXT_PROP_NAME, logrec.get(CONTEXT_PROP_NAME));
+                    kvrp.lr.put(CONTEXT_HASH_PROP_NAME, logrec.get(CONTEXT_HASH_PROP_NAME));
+                    kvrp.lr.put(CONTEXT_LAST_LINE_PROP_NAME, logrec.get(CONTEXT_LAST_LINE_PROP_NAME));
+                    kvrp.lr.put(CONTEXT_LAST_LINE_HASH_PROP_NAME, logrec.get(CONTEXT_LAST_LINE_HASH_PROP_NAME));
                     kvrp.bytesRead = kvrc.bytesRead;
                     kvrp.isReadyToStore = true;
                 }
@@ -1126,7 +1299,7 @@ public class FastTJParser implements LogParser {
         //
         boolean continueParsing = true;
         if (kvrp.isReadyToStore) {
-            continueParsing = onLogRecord(kvrp.lr);
+            continueParsing = onLogRecord(kvrp);
         }
         
         kvcc = -1;
@@ -1161,9 +1334,6 @@ public class FastTJParser implements LogParser {
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
         
-        kvrp.bytesRead = fromPosition;
-        kvrc.bytesRead = fromPosition;
-        
         String fileName = state.getFile().getName();
         boolean isTJName = fileName.matches("\\d{8}.*\\.log");
         
@@ -1172,7 +1342,6 @@ public class FastTJParser implements LogParser {
                 STREAM_BUFFER_SIZE)) {
             stream = rafs;
             stream.seek(fromPosition);
-            filePos = fromPosition;
             read(stream,
                     isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970,
                     isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0,
@@ -1182,28 +1351,20 @@ public class FastTJParser implements LogParser {
             // в конце (finally) будет rafs.close()
         }
         catch (ParseException ex) {
-            // ошибкой будем считать любое исключение, возникшее при чтении лог-файла, за исключением
-            // случая чтения записи лога в процессе её записи, когда она записана не полностью
-            //
-            String message = ex.getMessage();
-            if (message != null 
-                    && !message.contains("Encountered: <EOF> after :")
-                    && !message.contains("Encountered \"<EOF>\" at")) {
-                /*
+            if (parameters != null && parameters.logParseExceptions()) {
                 String parserErrorLog = makeParserErrorsLogDir(parameters);
                 File errorFragmentFile = new File(String.format("%s/%s.%s.%s.parse_error", 
                         parserErrorLog,
                         state.getFile().getName(),
-                        fromPosition + kvrp.bytesRead,
-                        fromPosition + super.getBytesRead() + 256));
+                        kvrp.bytesRead - 1,
+                        filePos));
                 copyFileFragment(state.getFile(), 
-                        fromPosition + kvrp.bytesRead,
-                        fromPosition + super.getBytesRead() + 256,
+                        kvrp.bytesRead - 1,
+                        filePos + 256, // в лог-файл с фрагментом ошибки запишем ещё несколько символов после ошибки
                         errorFragmentFile);
-                */
-                exception = ex;
-                throw ex;
             }
+            exception = ex;
+            throw new ParseException(ex.getMessage() + " at line " + fileLinesRead);
         }
         catch (Exception ex) {
             exception = ex;
@@ -1225,21 +1386,45 @@ public class FastTJParser implements LogParser {
         calendar.set(year, month - 1, day, hour, 0, 0);
         calendar.set(Calendar.MILLISECOND, 0);
         microsecondsBase = calendar.getTimeInMillis() * 1000L + MICROSECONDS_TO_1970;
+        
+        kvrp.clear();
+        kvrc.clear();
 
+        long fromPosition = stream.getFilePointer();
+        kvrp.bytesRead = fromPosition;
+        kvrc.bytesRead = fromPosition;
+        startPos = fromPosition;
+        filePos = fromPosition;
+        validBytesRead = fromPosition;
+
+        fileLinesRead = 0;
         unfilteredCount = 0;
         filteredCount = 0;
         delay = parameters == null ? 0 : parameters.getDelay();
+        maxTokenLength = parameters == null ? Integer.MAX_VALUE : parameters.getMaxTokenLength();
+        getTokenLength = maxTokenLength == Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) (maxTokenLength * 1.05);
 
-        ContainsMatcher matcher;
-        if (true) {
-            matcher = new ContainsMatcher("57:18.039118-1,DBMSSQL,5,p:processName=Торговля_АА");
-        }
-        
-        fileLinesRead = 0;
+        ContainsMatcher matcher = new ContainsMatcher("57:18.039118-1,DBMSSQL,5,p:processName=Торговля_АА");
+        StringConstructor sc = new StringConstructor();
         
         kvcc = -1;
         mode = MODE_TIMESTAMP;
+        mm = ss = ms = tssymbols = 0;
         
+        boolean recordDone = false;                // прочитана ли запись до конца (должна заканчиваться \n)
+        
+        byte[] b2 = new byte[2];                   // буфер UTF-символа для отладки
+        byte[] b3 = new byte[3];                   // буфер UTF-символа для отладки
+        byte[] b4 = new byte[4];                   // буфер UTF-символа для отладки
+    
+        byte ic2 = 0;                              // втророй UTF-байт
+        byte ic3 = 0;                              // третий UTF-байт
+        byte ic4 = 0;                              // четвёртый UTF-байт
+
+        byte bytesInSym = 1;                       // количество байтов в прочитанном UTF-8 символе
+
+        KeyValueBounds kvc = new KeyValueBounds(); // текущая пара ключ-значение
+    
         do {
             firstBytePos = filePos;
             icc = stream.bread(); filePos++;
@@ -1320,7 +1505,7 @@ public class FastTJParser implements LogParser {
                 }
             }
 
-            if (matcher != null && matcher.checkNext(icc, ic2, ic3, ic4, bytesInSym)) System.out.println("matched at " + (filePos - matcher.length()));
+//          if (matcher != null && matcher.checkNext(icc, ic2, ic3, ic4, bytesInSym)) System.out.println("matched at " + (filePos - matcher.length()));
 
             switch (icc) {
                 case CARRIAGE_RETURN:
@@ -1330,12 +1515,14 @@ public class FastTJParser implements LogParser {
                         case MODE_KEY:
                             mode = MODE_RECORD_TERMINATE;
                             // зафиксировать конец ключа
-                            kvrc.kv[kvcc].ke = firstBytePos - 1;
+                            kvc.ke = firstBytePos - 1;
+                            kvc.kv = sc.toString();
+                            kvc.isLocks = LOCKS_PROP_NAME.equals(kvc.kv);
                             break;
                         case MODE_VALUE:
                             mode = MODE_RECORD_TERMINATE;
                             // зафиксировать конец значения
-                            kvrc.kv[kvcc].ve = firstBytePos - 1;
+                            kvc.ve = firstBytePos - 1;
                             // зафиксировать конец последнего токена занчения Locks
                             if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 1; }
                             break;
@@ -1348,11 +1535,12 @@ public class FastTJParser implements LogParser {
                         case MODE_VALUE_IA_COMMA_OR_APO_EXPECTED:
                             mode = MODE_RECORD_TERMINATE;
                             // зафиксировать конец значения (-2)
-                            kvrc.kv[kvcc].ve = firstBytePos - 2;
+                            kvc.ve = firstBytePos - 2;
                             // зафиксировать конец последнего токена занчения Locks
                             if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 2; }
                             break;
                         default:
+                            mode = MODE_RECORD_TERMINATE;
                     }
                     fileLinesRead++;
                     break;
@@ -1373,12 +1561,12 @@ public class FastTJParser implements LogParser {
                         case MODE_VALUE_EXPECTED:
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец значения (оно пустое)
-                            kvrc.kv[kvcc].ve = firstBytePos;
+                            kvc.ve = firstBytePos;
                             break;
                         case MODE_VALUE:
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец значения
-                            kvrc.kv[kvcc].ve = firstBytePos;
+                            kvc.ve = firstBytePos;
                             // зафиксировать конец последнего токена занчения Locks
                             if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos; }
                             break;
@@ -1391,7 +1579,7 @@ public class FastTJParser implements LogParser {
                         case MODE_VALUE_IA_COMMA_OR_APO_EXPECTED:
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец значения (-1)
-                            kvrc.kv[kvcc].ve = firstBytePos - 1;
+                            kvc.ve = firstBytePos - 1;
                             // зафиксировать конец последнего токена занчения Locks
                             if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 1; }
                             break;
@@ -1408,6 +1596,12 @@ public class FastTJParser implements LogParser {
                         case MODE_EVENT:
                         case MODE_KEY:
                             break;
+                        case MODE_VALUE_EXPECTED:
+                            mode = MODE_VALUE;
+                            // зафиксировать начало значения
+                            kvc.vb = firstBytePos;
+                            valueMode = VALUE_MODE_GENERAL;
+                            break;
                         case MODE_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
@@ -1423,9 +1617,17 @@ public class FastTJParser implements LogParser {
                         case MODE_KEY:
                             mode = MODE_VALUE_EXPECTED;
                             // зафиксировать конец ключа
-                            kvrc.kv[kvcc].ke = firstBytePos;
+                            kvc.ke = firstBytePos;
+                            kvc.kv = sc.toString();
+                            kvc.isLocks = LOCKS_PROP_NAME.equals(kvc.kv);
                             break;
                         case MODE_EVENT:
+                            break;
+                        case MODE_VALUE_EXPECTED:
+                            mode = MODE_VALUE;
+                            // зафиксировать начало значения
+                            kvc.vb = firstBytePos;
+                            valueMode = VALUE_MODE_GENERAL;
                             break;
                         case MODE_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
@@ -1442,9 +1644,9 @@ public class FastTJParser implements LogParser {
                         case MODE_VALUE_EXPECTED:
                             mode = MODE_VALUE_INSIDE_QUOTATION_MARK;
                             // зафиксировать начало значения (+1)
-                            kvrc.kv[kvcc].vb = firstBytePos + 1;
+                            kvc.vb = firstBytePos + 1;
                             // если ключ для этого значения равен "Locks", начинается парсинг блокировок
-                            if (kvrc.kv[kvcc].isLocks = locksMatcher.matches()) { // здесь присвоение, а не равенство!
+                            if (kvc.isLocks) {
                                 // фиксируем начало значения ключа "Locks"
                                 valueMode = VALUE_MODE_LOCKS;
                                 // инициализируем данные блокировки и переходим
@@ -1484,9 +1686,9 @@ public class FastTJParser implements LogParser {
                         case MODE_VALUE_EXPECTED:
                             mode = MODE_VALUE_INSIDE_APOSTROPHE;
                             // зафиксировать начало значения (+1)
-                            kvrc.kv[kvcc].vb = firstBytePos + 1;
+                            kvc.vb = firstBytePos + 1;
                             // если ключ для этого значения равен "Locks", начинается парсинг блокировок
-                            if (kvrc.kv[kvcc].isLocks = locksMatcher.matches()) { // здесь присвоение, а не равенство!
+                            if (kvc.isLocks) {
                                 // фиксируем начало значения ключа "Locks"
                                 valueMode = VALUE_MODE_LOCKS;
                                 // инициализируем данные блокировки и переходим
@@ -1525,6 +1727,7 @@ public class FastTJParser implements LogParser {
                 default: // любой другой однобайтный символ (в т.ч. EOF) или символ из двух и более байтов
                     switch (mode) {
                         case MODE_RECORD_TERMINATE:
+                            recordDone = true;
                             // зафиксировать запись в коллекции; сюда попадём
                             // только если встретился перевод строки, но не EOF
                             if (!buildRecord()) {
@@ -1533,14 +1736,18 @@ public class FastTJParser implements LogParser {
                             }
                             mode = MODE_TIMESTAMP;
                             mm = ss = ms = tssymbols = 0;
-                            break;
+                            // здесь break не нужен
                         case MODE_TIMESTAMP:
+                            if (bytesInSym != 1) break; // BOM
+                            if (icc == EOF) break;
+                            recordDone = false;
                             tssymbols++;
                             switch (tssymbols) {
                                 case 1:
                                     sc.reset();
                                     sc.addByte(icc);
                                     mm = icc - CHR0;
+                                    break;
                                 case 2:
                                     sc.addByte(icc);
                                     sminutes = sc.toString();
@@ -1552,6 +1759,7 @@ public class FastTJParser implements LogParser {
                                     sc.reset();
                                     sc.addByte(icc);
                                     ss = icc - CHR0;
+                                    break;
                                 case 5:
                                     sc.addByte(icc);
                                     sseconds = sc.toString();
@@ -1575,7 +1783,7 @@ public class FastTJParser implements LogParser {
                             if (v82format) {
                                 ms = ms * 100;
                             }
-                            timestamp = microsecondsBase + mm * 60 + ss * 1000000L + ms;
+                            timestamp = microsecondsBase + (mm * 60 + ss) * 1000000L + ms;
                             // начнём обработку продолжительности события
                             mode = MODE_DURATION;
                             duration = 0;
@@ -1620,42 +1828,27 @@ public class FastTJParser implements LogParser {
                             mode = MODE_KEY;
                             // зафиксировать начало ключа
                             kvcc++;
-                            kvrc.kv[kvcc].kb = firstBytePos;
-                            kvrc.kv[kvcc].vb = 0;
-                            // организовать проверку на равенство ключей значениям из списка
-                            locksMatcher.newSearch();
-                            contextMatcher.newSearch();
-                            processNameMatcher.newSearch();
-                            computerNameMatcher.newSearch();
-                            usrMatcher.newSearch();
-                            escalatingMatcher.newSearch();
+                            kvc = kvrc.kv[kvcc];
+                            kvc.kb = firstBytePos;
+                            kvc.vb = 0;
+                            sc.reset();
                             // здесь break не нужен
                         case MODE_KEY:
-                            locksMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
-                            contextMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
-                            processNameMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
-                            computerNameMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
-                            usrMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
-                            escalatingMatcher.checkNext(icc, ic2, ic3, ic4, bytesInSym);
+                            sc.addByte(icc);
                             break;
                         case MODE_VALUE_EXPECTED:
                             mode = MODE_VALUE;
-                            // обработка проверки ключа на равенство значению из списка
-                            kvrc.kv[kvcc].isContext = contextMatcher.matches();
-                            kvrc.kv[kvcc].isProcessName = processNameMatcher.matches();
-                            kvrc.kv[kvcc].isComputerName = computerNameMatcher.matches();
-                            kvrc.kv[kvcc].isUsr = usrMatcher.matches();
-                            kvrc.kv[kvcc].isEscalating = escalatingMatcher.matches();
                             // зафиксировать начало значения
-                            kvrc.kv[kvcc].vb = firstBytePos;
+                            kvc.vb = firstBytePos;
                             // если ключ для этого значения равен "Locks", начинается парсинг блокировок
-                            if (kvrc.kv[kvcc].isLocks = locksMatcher.matches()) { // здесь присвоение, а не равенство!
+                            if (kvc.isLocks) {
                                 // фиксируем начало значения ключа "Locks"
                                 valueMode = VALUE_MODE_LOCKS;
                                 // инициализируем данные блокировки и переходим
                                 // в режим ожидания токена пространства блокировки
                                 lck = kvrc.lck.reinit();
                                 inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
+                                locksValueRead();
                             }
                             else {
                                 valueMode = VALUE_MODE_GENERAL;
@@ -1672,14 +1865,14 @@ public class FastTJParser implements LogParser {
                     }
             }
             
-            
-            
+            /*
             if (filePos % 10240000 == 0) { // 10Mb
                 System.out.println("" + filePos + "    " 
                         + stream.getBackSeekCount() + "    "
                         + recordsStorage.size() + "    "
                 );
             }
+            */
             
         }
         while (icc != EOF);
@@ -1688,14 +1881,12 @@ public class FastTJParser implements LogParser {
         // и если она ещё не записана в хранилище и не является записью с event == Context,
         // то запишем её в хранилище (если там есть место)
         //
-        if (!kvrp.isReadyToStore && !kvrp.isContext) {
-            onLogRecord(kvrp.lr);
+        if (!kvrp.isReadyToStore && !kvrp.isContext && recordDone) {
+            onLogRecord(kvrp);
         }
-
-        stream.close();
         
-        System.out.println("total records count = " + unfilteredCount);
-        System.out.println("filtered records count = " + filteredCount);
+        kvrp.clear();
+        kvrc.clear();
     }
     
     
@@ -1744,6 +1935,11 @@ public class FastTJParser implements LogParser {
                 break;
             case COMMA:
                 switch (inLockMode) {
+                    case IN_LOCK_MODE_LOCK_TYPE:
+                        // фиксируем завершение токена
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                        inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
+                        break;
                     case IN_LOCK_MODE_LOCK_VALUE:
                     case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                     case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
@@ -1753,7 +1949,7 @@ public class FastTJParser implements LogParser {
                         // ветку парсинга (см. здесь же ветку с EQUALS); фиксируем завершение токена
                         //
                         lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
-                        tokenRowLevel++;
+                        tokenRowLevel++; // если окажется, что будет новое пространство блокировок, то там будет := 0
                         inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
@@ -1844,6 +2040,7 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            tokenKind = TOKEN_KIND_LOCK_VALUE;
                             tokenBegin = firstBytePos + 2; // + кавычка + будущая экранирующая кавычка
                             inLockModeBackup = inLockMode;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK;
@@ -1869,6 +2066,18 @@ public class FastTJParser implements LogParser {
                         case IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED:
                             inLockMode = inLockModeNext;
                             break;
+                        case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
+                            mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
+                            // зафиксировать конец текущего токена (-1 \r)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
+                        case IN_LOCK_MODE_LOCK_TYPE:
+                            mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
+                            // фиксируем завершение токена
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
                         default:
                             throw new ParseException("wrong quotation mark appear");
                     }
@@ -1877,6 +2086,7 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            tokenKind = TOKEN_KIND_LOCK_VALUE;
                             tokenBegin = firstBytePos + 1; // + кавычка
                             inLockMode = IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK;
                             break;
@@ -1904,6 +2114,7 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            tokenKind = TOKEN_KIND_LOCK_VALUE;
                             tokenBegin = firstBytePos + 2; // + апостроф + будущий экранирующий апостороф
                             inLockModeBackup = inLockMode;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE;
@@ -1930,9 +2141,15 @@ public class FastTJParser implements LogParser {
                             inLockMode = inLockModeNext;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
-                            mode = mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
+                            mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
                             // зафиксировать конец текущего токена (-1 \r)
                             lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
+                        case IN_LOCK_MODE_LOCK_TYPE:
+                            mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
+                            // фиксируем завершение токена
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         default:
@@ -1943,6 +2160,7 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            tokenKind = TOKEN_KIND_LOCK_VALUE;
                             tokenBegin = firstBytePos + 1; // + апостроф
                             inLockMode = IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE;
                             break;
@@ -1969,21 +2187,25 @@ public class FastTJParser implements LogParser {
                         break;
                     case IN_LOCK_MODE_SPACENAME_EXPECTED:
                         // зафиксировать начало токена имени пространства блокировки
+                        tokenKind = TOKEN_KIND_LOCK_SPACE;
                         tokenBegin = firstBytePos;
                         inLockMode = IN_LOCK_MODE_SPACENAME;
                         break;
                     case IN_LOCK_MODE_LOCK_TYPE_EXPECTED:
                         // зафиксировать начало токена типа блокировки
+                        tokenKind = TOKEN_KIND_LOCK_TYPE;
                         tokenBegin = firstBytePos;
                         inLockMode = IN_LOCK_MODE_LOCK_TYPE;
                         break;
                     case IN_LOCK_MODE_LOCK_KEY_EXPECTED:
                         // зафиксировать начало токена ключа элемента блокировки
+                        tokenKind = TOKEN_KIND_LOCK_KEY;
                         tokenBegin = firstBytePos;
                         inLockMode = IN_LOCK_MODE_LOCK_KEY;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                         // зафиксировать начало токена значения элемента блокировки
+                        tokenKind = TOKEN_KIND_LOCK_VALUE;
                         tokenBegin = firstBytePos;
                         inLockMode = IN_LOCK_MODE_LOCK_VALUE;
                         break;
@@ -2010,92 +2232,36 @@ public class FastTJParser implements LogParser {
         
         List<File> sources = new ArrayList<>();
         
-//      sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70");
+//      sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456");
+//      sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72");
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Queries\\rphost_31828\\23103119.log"));
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\SQL_Locks\\rphost_58776\\23103119.log")); // 2Gb
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24011700.log")); // Locks
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\23120112.log")); // Transactions
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L71\\23021816.log")); // Locks
-        sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log")); // Locks 648 M
+//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log")); // Locks 648 M
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110312.log")); // Locks 1 G
+//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110313.log")); // Locks 1 G
 //      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\test.txt"));
+//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\Calls\\rphost_5456\\23110313.log")); // Calls
+//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Transactions\\rphost_31828\\23103119.log"));
+        sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24012915.log"));
 
         String filterJson = "{'or' : "
                 + "[ "
                 + "{ 'and' : "
                 + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11880' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443433' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11881' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443434' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11882' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443435' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11883' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443433' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11884' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443434' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11885' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443435' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11886' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443436' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11887' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443437' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11888' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443438' } "
-                + "    ]"
-                + "}, "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'duration', 'operation' : 'n>=', 'pattern' : '3' }, "
-                + "    { 'property' : 'OSThread', 'pattern' : '11889' }, "
-                + "    { 'property' : 't:connectID', 'pattern' : '443439' } "
+                + "    { 'property' : 'WaitConnections[?]', 'operation' : 'filled', 'pattern' : '' } "
                 + "    ]"
                 + "} "
                 + "]}";
         Filter filter = Filter.fromJson(filterJson);
-        
         filter = null;
+        
+        ParserParameters parameters = new ParserParameters();
+        parameters.setDelay(0);
+        parameters.setMaxTokenLength(1024 * 32);
+        parameters.setLogParseExceptions(false);
 
         long duration = 0;
         long TESTS_COUNT = 1; // 100;
@@ -2108,7 +2274,7 @@ public class FastTJParser implements LogParser {
                 System.out.println("file " + file.getAbsolutePath());
                 long m = new Date().getTime();
                 try {
-                    parser.parse(state, "UTF-8", state.getPointer(), /* 999999999 */ 1000 * 10000000, filter, null);
+                    parser.parse(state, "UTF-8", state.getPointer(), 2 + 999999999, filter, parameters);
                 }
                 catch (ParseException | TokenMgrError ex) {
                     System.out.println("!!! parse error: " + ex.getMessage());
@@ -2116,11 +2282,12 @@ public class FastTJParser implements LogParser {
                 duration = duration + (new Date().getTime() - m);
                 System.out.println("found rows: " + recordsStorage.size());
                 System.out.println(" file size: " + file.length());
-                System.out.println("bytes read: " + (parser.getFilePos() - 1));
-                if (parser.getFilePos() - 1 != file.length()) {
+                System.out.println("bytes read: " + (parser.getFilePos()));
+                if (parser.getFilePos() != file.length()) {
                     System.out.println("      ====: ^");
                 }
                 recordsStorage.clear();
+                System.gc();
             }
             
             Thread.sleep(1000);
