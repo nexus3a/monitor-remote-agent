@@ -101,30 +101,13 @@ public class OneCTJ implements OneCTJConstants {
     private boolean includeLockRecords;                     // нужно ли собирать данные полей блокировки
 
     public static void main(String args[]) throws Throwable {
-        /*
-        final OneCTJ parser = new OneCTJ();
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\20092816.DBMSSQL.log"), "UTF-8");
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\21112514.DBMSSQL.log"), "UTF-8");
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\21120914.EXCP.log"), "UTF-8");
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\21121011.SDBL.log"), "UTF-8");
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\21121011.TDEADLOCK.log"), "UTF-8");
-//      System.out.println("perfomance: " + parser.getPerfomance());
-//      System.out.println("records: " + parser.getRecordsCount());
-         */
-        
         System.out.println("test = " + DATE_FORMAT.format(new Date((63827362557274001L - MICROSECONDS_TO_1970 - 999983) / 1000L)));
 
         final OneCTJ parser = new OneCTJ();
-//      parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\00000001.log"), 
-//      parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\SQL_Locks\\rphost_58776\\23103119.log"), 
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24012823.log"), 
+        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log"), 
                 "UTF-8",
                 new ParserParameters());
         parser.onParseEnd();
-//        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\23040608_0.log"), "UTF-8");
-//        parser.onParseEnd();
-//        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\23040608_0.log"), "UTF-8");
-//        parser.onParseEnd();
         System.out.println("perfomance: " + parser.getPerfomance());
         System.out.println("records: " + parser.getRecordsCount());
         System.out.println("bytes read: " + parser.getBytesRead());

@@ -58,10 +58,7 @@ public class TJParser extends OneCTJ implements LogParser {
         TJParser parser = new TJParser();
         parser.setRecordsStorage(recordsStorage);
         
-//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72");
-        List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Transactions\\rphost_31828\\23103119.log");
-//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456");
-//      List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log");
+        List<File> sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70");
 
         long duration = 0;
         long TESTS_COUNT = 1; // 100;
@@ -74,7 +71,7 @@ public class TJParser extends OneCTJ implements LogParser {
                 System.out.println("file " + file.getAbsolutePath());
                 long m = new Date().getTime();
                 try {
-                    parser.parse(state, "UTF-8", state.getPointer(), 2 + 0 * 999999999 /* 1024 */, null, null);
+                    parser.parse(state, "UTF-8", state.getPointer(), 2 + 999999999 /* 1024 */, null, null);
                 }
                 catch (ParseException | TokenMgrError ex) {
                     System.out.println("!!! parse error: " + ex.getMessage());

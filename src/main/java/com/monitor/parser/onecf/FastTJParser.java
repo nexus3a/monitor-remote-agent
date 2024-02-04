@@ -8,7 +8,6 @@ import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
-import com.monitor.parser.onec.TokenMgrError;
 import com.monitor.parser.reader.ParserNullStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.BufferedInputStream;
@@ -28,7 +27,6 @@ import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
@@ -36,7 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /*
- * Copyright 2023 Алексей.
+ * Copyright 2024 Aleksei Andreev
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,10 +55,11 @@ import java.util.regex.Pattern;
  */
 public class FastTJParser implements LogParser {
     
-    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 100; // 200Mb 
-    private static final boolean DEBUG_SYMBOLS = false;
-    private static final boolean DEBUG_RECORDS = true;
+    public static boolean DEBUG_SYMBOLS = false;
+    public static boolean DEBUG_RECORDS = false;
     
+    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 100; // 200Mb 
+
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
     private static final String SQL_PARAMETERS_PROP_MARKER = "\np_0:";
@@ -95,7 +94,7 @@ public class FastTJParser implements LogParser {
     private static final byte MODE_KEY_EXPECTED = 8;                       // ожидается начало key
     private static final byte MODE_KEY = 9;                                // чтение key
     private static final byte MODE_VALUE_EXPECTED = 10;                    // ожидается начало value
-    private static final byte MODE_VALUE = 11;                             // чтение value
+    private static final byte MODE_PLAIN_VALUE = 11;                             // чтение value
     private static final byte MODE_VALUE_INSIDE_QUOTATION_MARK = 12;       // чтение value в кавычках
     private static final byte MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED = 13;    // ожидается запятая или кавычка
     private static final byte MODE_VALUE_INSIDE_APOSTROPHE = 14;           // чтение value в апострофах
@@ -104,16 +103,32 @@ public class FastTJParser implements LogParser {
     private static final byte VALUE_MODE_GENERAL = 0;
     private static final byte VALUE_MODE_LOCKS = 1;
     
+    private static final byte LOCK_VALUE_MODE_PLAIN = 0;
+    private static final byte LOCK_VALUE_MODE_QUOTED = 1;
+    private static final byte LOCK_VALUE_MODE_APOSTROPHED = 2;
+    
     private static final byte TOKEN_KIND_UNDEFINED = 0;
     private static final byte TOKEN_KIND_LOCK_SPACE = 1;
     private static final byte TOKEN_KIND_LOCK_TYPE = 2;
     private static final byte TOKEN_KIND_LOCK_KEY = 3;
     private static final byte TOKEN_KIND_LOCK_VALUE = 4;
     
+    private static final byte TOKEN_PQA_UNDEFINED = 0;
+    private static final byte TOKEN_PQA_PLAIN_PLAIN = 1;
+    private static final byte TOKEN_PQA_PLAIN_QM = 2;
+    private static final byte TOKEN_PQA_PLAIN_APO = 3;
+    private static final byte TOKEN_PQA_QM_PLAIN = 4;
+    private static final byte TOKEN_PQA_QM_QM = 5;
+    private static final byte TOKEN_PQA_QM_APO = 6;
+    private static final byte TOKEN_PQA_APO_PLAIN = 7;
+    private static final byte TOKEN_PQA_APO_QM = 8;
+    private static final byte TOKEN_PQA_APO_APO = 9;
+    
     private BufferedRandomAccessFileStream stream;
     
     private byte mode = MODE_TIMESTAMP;
     private byte valueMode = VALUE_MODE_GENERAL;
+    private byte lockValueMode = LOCK_VALUE_MODE_PLAIN;
     private long firstBytePos = 0;
     private long startPos = 0;
     private long filePos = 0;
@@ -152,6 +167,7 @@ public class FastTJParser implements LogParser {
     private Token lckelt = new Token();            // текущий токен заполняемого элемента управляемой блокировки
     
     byte tokenKind = TOKEN_KIND_UNDEFINED;
+    byte tokenQuotation = TOKEN_PQA_UNDEFINED;
     long tokenBegin = 0;
     int  tokenRowLevel = 0;
     
@@ -228,26 +244,6 @@ public class FastTJParser implements LogParser {
     private int delay;
     private int maxTokenLength;
     private int getTokenLength;
-    
-    
-    private static List<File> filesFromDirectory(String directoryName) {
-        List<File> result = new ArrayList<>();
-        filesFromDirectory(new File(directoryName), result);
-        return result;
-    }
-    
-    
-    private static void filesFromDirectory(File file, List<File> filesList) {
-        if (file.isDirectory()) {
-            File[] files = file.listFiles();
-            for (File child : files) {
-                filesFromDirectory(child, filesList);
-            }
-        }
-        else if (file.isFile()) {
-            filesList.add(file);
-        }
-    }
     
     
     public static boolean copyFile(File src, File dest, boolean rewrite) throws IOException {
@@ -474,6 +470,7 @@ public class FastTJParser implements LogParser {
         public long te = 0;                     // token end file pos
         public byte tk = TOKEN_KIND_UNDEFINED;  // token kind
         public int  tl = 0;                     // token [row] level
+        public int  tq = TOKEN_PQA_UNDEFINED;   // token plain/quoted/apostrophed
     }
     
     
@@ -495,7 +492,7 @@ public class FastTJParser implements LogParser {
             tc = maxtc = reinitCount = 0;
         }
         
-        public Token addToken(long tb, long te, byte tk, int tl) {
+        public Token addToken(long tb, long te, byte tk, int tl, byte tq) {
             Token res;
             if (tc == maxtc) {
                 res = new Token();
@@ -509,6 +506,7 @@ public class FastTJParser implements LogParser {
             res.te = te;
             res.tk = tk;
             res.tl = tl;
+            res.tq = tq;
             return res;
         }
         
@@ -1106,6 +1104,7 @@ public class FastTJParser implements LogParser {
             catch (Exception ex1) {
                 if (exception == null) exception = ex1;
             }
+            return false;
         }
         return filteredCount < maxCount;
     }
@@ -1182,7 +1181,7 @@ public class FastTJParser implements LogParser {
                                 lelm.put(LOCK_SPACE_TYPE_PROP_NAME, v);
                                 break;
                             case TOKEN_KIND_LOCK_KEY:
-                                if (rlvl != lelt.tl) {
+                                if (rlvl != lelt.tl) {                          // token level ++
                                     rlvl = lelt.tl;
                                     rm = new HashMap<>();
                                     rl.add(rm);
@@ -1190,6 +1189,36 @@ public class FastTJParser implements LogParser {
                                 rk = v;
                                 break;
                             case TOKEN_KIND_LOCK_VALUE:
+                                switch (lelt.tq) {
+                                    case TOKEN_PQA_PLAIN_APO:
+                                        // 'AB"CD''EFG' -> "AB""CD'EFG"
+                                        v = "\"" + v.substring(1, v.length() - 1).replaceAll("\'\'", "\'").replaceAll("[\"]", "\"\"") + "\"";
+                                        break;
+                                    case TOKEN_PQA_QM_PLAIN:
+                                        // AB""CD'EFG -> AB"CD'EFG
+                                        v = v.replaceAll("\"\"", "\"");
+                                        break;
+                                    case TOKEN_PQA_QM_QM:
+                                        // ""AB""""CD'EFG"" -> "AB""CD'EFG"
+                                        v = v.replaceAll("\"\"", "\"");
+                                        break;
+                                    case TOKEN_PQA_QM_APO:
+                                        // 'AB""CD''EFG' -> "AB""CD'EFG"
+                                        v = "\"" + v.substring(1, v.length() - 1).replaceAll("\'\'", "\'") + "\"";
+                                        break;
+                                    case TOKEN_PQA_APO_PLAIN:
+                                        // AB"CD''EFG -> AB"CD'EFG
+                                        v = v.replaceAll("\'\'", "\'");
+                                        break;
+                                    case TOKEN_PQA_APO_QM:
+                                        // "AB""CD''EFG" -> "AB""CD'EFG"
+                                        v = v.replaceAll("\'\'", "\'");
+                                        break;
+                                    case TOKEN_PQA_APO_APO:
+                                        // ''AB"CD''''EFG'' -> "AB""CD'EFG"
+                                        v = "\"" + v.substring(2, v.length() - 2).replaceAll("\'\'\'\'", "\'").replaceAll("[\"]", "\"\"") + "\"";
+                                    default:
+                                }
                                 assert rm != null;
                                 rm.put(rk, v);
                                 break;
@@ -1483,25 +1512,25 @@ public class FastTJParser implements LogParser {
             if (DEBUG_SYMBOLS) {
                 switch (bytesInSym) {
                     case 1:
-                        System.out.println("" + (char) icc + " (" + icc + ") [" + mode + "]");
+                        System.out.println("" + (char) icc + " (" + icc + ") [" + mode + "] {" + inLockMode + "}");
                         break;
                     case 2:
                         b2[0] = icc;
                         b2[1] = ic2;
-                        System.out.println("" + new String(b2, UTF8) + " (" + icc + ", " + ic2 + ") [" + mode + "]");
+                        System.out.println("" + new String(b2, UTF8) + " (" + icc + ", " + ic2 + ") [" + mode + "] {" + inLockMode + "}");
                         break;
                     case 3:
                         b3[0] = icc;
                         b3[1] = ic2;
                         b3[2] = ic3;
-                        System.out.println("" + new String(b3, UTF8) + " (" + icc + ", " + ic2 + ", " + ic3 + ") [" + mode + "]");
+                        System.out.println("" + new String(b3, UTF8) + " (" + icc + ", " + ic2 + ", " + ic3 + ") [" + mode + "] {" + inLockMode + "}");
                         break;
                     case 4:
                         b4[0] = icc;
                         b4[1] = ic2;
                         b4[2] = ic3;
                         b4[3] = ic4;
-                        System.out.println("" + new String(b4, UTF8) + " (" + icc + ", " + ic2 + ", " + ic3 + ", " + ic4 + ") [" + mode + "]");
+                        System.out.println("" + new String(b4, UTF8) + " (" + icc + ", " + ic2 + ", " + ic3 + ", " + ic4 + ") [" + mode + "] {" + inLockMode + "}");
                 }
             }
 
@@ -1519,12 +1548,14 @@ public class FastTJParser implements LogParser {
                             kvc.kv = sc.toString();
                             kvc.isLocks = LOCKS_PROP_NAME.equals(kvc.kv);
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                             mode = MODE_RECORD_TERMINATE;
                             // зафиксировать конец значения
                             kvc.ve = firstBytePos - 1;
                             // зафиксировать конец последнего токена занчения Locks
-                            if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 1; }
+                            if (valueMode == VALUE_MODE_LOCKS) { 
+                                lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, tokenKind, tokenRowLevel, tokenQuotation);
+                            }
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
@@ -1537,7 +1568,9 @@ public class FastTJParser implements LogParser {
                             // зафиксировать конец значения (-2)
                             kvc.ve = firstBytePos - 2;
                             // зафиксировать конец последнего токена занчения Locks
-                            if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 2; }
+                            if (valueMode == VALUE_MODE_LOCKS) {
+                                lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
+                            }
                             break;
                         default:
                             mode = MODE_RECORD_TERMINATE;
@@ -1547,15 +1580,12 @@ public class FastTJParser implements LogParser {
                 case COMMA:
                     switch (mode) {
                         case MODE_DURATION:
-                            // TODO: зафиксировать конец продолжительности
                             mode = MODE_EVENT_EXPECTED;
                             break;
                         case MODE_EVENT:
-                            // TODO: зафиксировать конец имени события
                             mode = MODE_EVENT_LEVEL_EXPECTED;
                             break;
                         case MODE_EVENT_LEVEL:
-                            // TODO: зафиксировать конец уровня события
                             mode = MODE_KEY_EXPECTED;
                             break;
                         case MODE_VALUE_EXPECTED:
@@ -1563,12 +1593,14 @@ public class FastTJParser implements LogParser {
                             // зафиксировать конец значения (оно пустое)
                             kvc.ve = firstBytePos;
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец значения
                             kvc.ve = firstBytePos;
                             // зафиксировать конец последнего токена занчения Locks
-                            if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos; }
+                            if (valueMode == VALUE_MODE_LOCKS) { 
+                                lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
+                            }
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
@@ -1580,8 +1612,6 @@ public class FastTJParser implements LogParser {
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец значения (-1)
                             kvc.ve = firstBytePos - 1;
-                            // зафиксировать конец последнего токена занчения Locks
-                            if (valueMode == VALUE_MODE_LOCKS) { lckelt.te = firstBytePos - 1; }
                             break;
                         default:
                             throw new ParseException("wrong comma appearing");
@@ -1590,19 +1620,18 @@ public class FastTJParser implements LogParser {
                 case HYPHEN:
                     switch (mode) {
                         case MODE_TIMESTAMP:
-                            // TODO: зафиксировать конец момента времени события
                             mode = MODE_DURATION_EXPECTED;
                             break;
                         case MODE_EVENT:
                         case MODE_KEY:
                             break;
                         case MODE_VALUE_EXPECTED:
-                            mode = MODE_VALUE;
+                            mode = MODE_PLAIN_VALUE;
                             // зафиксировать начало значения
                             kvc.vb = firstBytePos;
                             valueMode = VALUE_MODE_GENERAL;
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
                             // если это значение ключа "Locks", то парсим значение
@@ -1624,12 +1653,12 @@ public class FastTJParser implements LogParser {
                         case MODE_EVENT:
                             break;
                         case MODE_VALUE_EXPECTED:
-                            mode = MODE_VALUE;
+                            mode = MODE_PLAIN_VALUE;
                             // зафиксировать начало значения
                             kvc.vb = firstBytePos;
                             valueMode = VALUE_MODE_GENERAL;
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
                             // если это символ "=" в значении ключа "Locks", то парсим значение
@@ -1673,7 +1702,7 @@ public class FastTJParser implements LogParser {
                             // если это значение ключа "Locks", то парсим значение
                             if (valueMode == VALUE_MODE_LOCKS) { locksValueRead(); }
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
                             if (valueMode == VALUE_MODE_LOCKS) { locksValueRead(); }
                             break;
@@ -1700,7 +1729,7 @@ public class FastTJParser implements LogParser {
                                 valueMode = VALUE_MODE_GENERAL;
                             }
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                             // если это значение ключа "Locks", то парсим значение
                             if (valueMode == VALUE_MODE_LOCKS) { locksValueRead(); }
@@ -1837,7 +1866,7 @@ public class FastTJParser implements LogParser {
                             sc.addByte(icc);
                             break;
                         case MODE_VALUE_EXPECTED:
-                            mode = MODE_VALUE;
+                            mode = MODE_PLAIN_VALUE;
                             // зафиксировать начало значения
                             kvc.vb = firstBytePos;
                             // если ключ для этого значения равен "Locks", начинается парсинг блокировок
@@ -1854,7 +1883,7 @@ public class FastTJParser implements LogParser {
                                 valueMode = VALUE_MODE_GENERAL;
                             }
                             break;
-                        case MODE_VALUE:
+                        case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                         case MODE_VALUE_INSIDE_APOSTROPHE:
                             // если это значение ключа "Locks", то парсим значение
@@ -1864,16 +1893,6 @@ public class FastTJParser implements LogParser {
                             throw new ParseException("wrong symbol appearing");
                     }
             }
-            
-            /*
-            if (filePos % 10240000 == 0) { // 10Mb
-                System.out.println("" + filePos + "    " 
-                        + stream.getBackSeekCount() + "    "
-                        + recordsStorage.size() + "    "
-                );
-            }
-            */
-            
         }
         while (icc != EOF);
 
@@ -1892,11 +1911,7 @@ public class FastTJParser implements LogParser {
     
     private void locksValueRead() throws ParseException {
         
-        // InfoRg43101.DIMS Exclusive Fld43102=308:b90d0050569db98a11ec9947003dff6f Fld43103=63834609629554
-        // 'InfoRg43101.DIMS Exclusive Fld43102=308:b90d0050569db98a11ec9947003dff6f Fld43103=63834609629554 Fld43104=2721719 Fld43105=T"20231103120000", Fld43102=308:b90d0050569db98a11ec9947003dff70 Fld43103=63834609629523 Fld43104=2721719 Fld43105=T"20231103120000", Fld43102=308:b90d0050569db98a11ec9947003dff71 Fld43103=63834609619665 Fld43104=2721719 Fld43105=T"20231103120000", Fld43102=308:b90d0050569db98a11ec9947003dff72 Fld43103=63834609619665 Fld43104=2721719 Fld43105=T"20231103120000", Fld43102=308:b90d0050569db98a11ec9947003dff73 Fld43103=63834609619665 Fld43104=2721719 Fld43105=T"20231103120000"'
-        // 'InfoRg81385X1.DIMS Exclusive Fld81386="b157092d-b4fc-11ec-a746-005056b38f20" Fld81389="out/ReplyClient_v2/651184" Fld81390=302:00000000000000000000000000000000 Fld81391="" Fld81393="cb2e2dbc-9d20-427d-8057-bbc12f2d42fa" Fld81394=302:00000000000000000000000000000000 Fld82196="010060704142"'
-        // 'Reference87.REFLOCK Exclusive Fld2734=0 ID=87:bc0a0050569d9ae211ee79453630d271,Reference87.REFLOCK Exclusive Fld2734=0 ID=87:bc0a0050569d9ae211ee79453630d271'
-        // Locks="Reference605X1.REFLOCK Exclusive Description=""Тест''''''''''123""""""""""" ("Тест''''''''''123""""")
+        long shift;
         
         switch (icc) {
             case NEW_LINE:
@@ -1904,18 +1919,30 @@ public class FastTJParser implements LogParser {
                     case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
                     case IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE:
                         break;
-                    case IN_LOCK_MODE_LOCK_VALUE:
                     case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                     case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
-                        // зафиксировать конец текущего токена (-1 \r)
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
-                        inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
-                        break;
+                        if (mode == MODE_PLAIN_VALUE) {
+                            mode = MODE_RECORD_TERMINATE;
+                            // зафиксировать конец текущего токена (-2 : \r\n)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
+                        }
+                        throw new ParseException("wrong line break appearing");
+                    case IN_LOCK_MODE_LOCK_VALUE:
+                        if (mode == MODE_PLAIN_VALUE) {
+                            mode = MODE_RECORD_TERMINATE;
+                            // зафиксировать конец текущего токена (-2 : \r\n)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
+                        }
+                        throw new ParseException("wrong line break appearing");
                     case IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED:
                         if (mode == MODE_VALUE_INSIDE_QUOTATION_MARK) {
                             mode = MODE_RECORD_TERMINATE;
-                            // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-2 \r\n)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         }
@@ -1923,8 +1950,8 @@ public class FastTJParser implements LogParser {
                     case IN_LOCK_MODE_SECOND_APOSTROPHE_EXPECTED:
                         if (mode == MODE_VALUE_INSIDE_APOSTROPHE) {
                             mode = MODE_RECORD_TERMINATE;
-                            // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-2 \r\n)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         }
@@ -1937,10 +1964,19 @@ public class FastTJParser implements LogParser {
                 switch (inLockMode) {
                     case IN_LOCK_MODE_LOCK_TYPE:
                         // фиксируем завершение токена
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                         inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE:
+                        // на самом деле после запятой может следовать или новое пространство блокировок,
+                        // или новая запись в наборе блокируемых значений; по умолчанию будем предполагать,
+                        // что будет новое пространство блокировок, а если поймём, что ошиблись, изменим
+                        // ветку парсинга (см. здесь же ветку с EQUALS); фиксируем завершение токена
+                        //
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
+                        tokenRowLevel++; // если окажется, что будет новое пространство блокировок, то там будет := 0
+                        inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
+                        break;
                     case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                     case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
                         // на самом деле после запятой может следовать или новое пространство блокировок,
@@ -1948,7 +1984,8 @@ public class FastTJParser implements LogParser {
                         // что будет новое пространство блокировок, а если поймём, что ошиблись, изменим
                         // ветку парсинга (см. здесь же ветку с EQUALS); фиксируем завершение токена
                         //
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                        shift = 0; // (mode == MODE_PLAIN_VALUE) ? 0 : 1;
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos - shift, tokenKind, tokenRowLevel, tokenQuotation);
                         tokenRowLevel++; // если окажется, что будет новое пространство блокировок, то там будет := 0
                         inLockMode = IN_LOCK_MODE_SPACENAME_EXPECTED;
                         break;
@@ -1959,7 +1996,7 @@ public class FastTJParser implements LogParser {
                         if (mode == MODE_VALUE_INSIDE_QUOTATION_MARK) {
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         }
@@ -1968,7 +2005,7 @@ public class FastTJParser implements LogParser {
                         if (mode == MODE_VALUE_INSIDE_APOSTROPHE) {
                             mode = MODE_KEY_EXPECTED;
                             // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         }
@@ -1986,10 +2023,11 @@ public class FastTJParser implements LogParser {
                         // токен имени пространства блокировок в токен ключа записи и удем собирать
                         // новую последовательность пар ключ-значение; фиксируем завершение токена
                         //
+                        tokenKind = TOKEN_KIND_LOCK_KEY;
                         inLockMode = IN_LOCK_MODE_LOCK_KEY;
                         // break здесь не нужен!
                     case IN_LOCK_MODE_LOCK_KEY:
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_KEY, tokenRowLevel);
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                         inLockMode = IN_LOCK_MODE_LOCK_VALUE_EXPECTED;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
@@ -2005,12 +2043,12 @@ public class FastTJParser implements LogParser {
                         lckel = lck.addLockElement();
                         tokenRowLevel = 0;
                         // фиксируем завершение первого токена элемента блокировки
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_SPACE, tokenRowLevel);
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                         inLockMode = IN_LOCK_MODE_LOCK_TYPE_EXPECTED;
                         break;
                     case IN_LOCK_MODE_LOCK_TYPE:
                         // фиксируем завершение токена
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                         inLockMode = IN_LOCK_MODE_LOCK_KEY_EXPECTED;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
@@ -2021,10 +2059,15 @@ public class FastTJParser implements LogParser {
                     case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE:
+                        // фиксируем завершение токена
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
+                        inLockMode = IN_LOCK_MODE_LOCK_KEY_EXPECTED;
+                        break;
                     case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                     case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
                         // фиксируем завершение токена
-                        lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                        shift = 0; //(mode == MODE_PLAIN_VALUE) ? 0 : 1;
+                        lckelt = lckel.addToken(tokenBegin, firstBytePos - shift, tokenKind, tokenRowLevel, tokenQuotation);
                         inLockMode = IN_LOCK_MODE_LOCK_KEY_EXPECTED;
                         break;
                     default:
@@ -2040,26 +2083,24 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            lockValueMode = LOCK_VALUE_MODE_QUOTED;
                             tokenKind = TOKEN_KIND_LOCK_VALUE;
-                            tokenBegin = firstBytePos + 2; // + кавычка + будущая экранирующая кавычка
-                            inLockModeBackup = inLockMode;
+                            tokenBegin = firstBytePos + 1; // + кавычка + будущая экранирующая кавычка
+                            tokenQuotation = TOKEN_PQA_QM_QM;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK;
                             inLockMode = IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
-                            inLockModeBackup = inLockMode;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED;
                             inLockMode = IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                             // это двойная кавычка внутри значения в кавычках - продолжаем чтение значения
-                            inLockModeBackup = inLockMode;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK;
                             inLockMode = IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE: // Fld43122=T"20231103120000"
                         case IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE:
-                            inLockModeBackup = inLockMode;
                             inLockModeNext = inLockMode;
                             inLockMode = IN_LOCK_MODE_SECOND_QUOTATION_MARK_EXPECTED;
                             break;
@@ -2068,14 +2109,14 @@ public class FastTJParser implements LogParser {
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED:
                             mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
-                            // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-2 : '")
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         case IN_LOCK_MODE_LOCK_TYPE:
                             mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
-                            // фиксируем завершение токена
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-1 : ")
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         default:
@@ -2086,8 +2127,10 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            lockValueMode = LOCK_VALUE_MODE_QUOTED;
                             tokenKind = TOKEN_KIND_LOCK_VALUE;
-                            tokenBegin = firstBytePos + 1; // + кавычка
+                            tokenBegin = firstBytePos; // + кавычка
+                            tokenQuotation = (mode == MODE_PLAIN_VALUE) ? TOKEN_PQA_PLAIN_QM : TOKEN_PQA_APO_QM;
                             inLockMode = IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_INSIDE_QUOTATION_MARK:
@@ -2114,8 +2157,10 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            lockValueMode = LOCK_VALUE_MODE_APOSTROPHED;
                             tokenKind = TOKEN_KIND_LOCK_VALUE;
-                            tokenBegin = firstBytePos + 2; // + апостроф + будущий экранирующий апостороф
+                            tokenBegin = firstBytePos;
+                            tokenQuotation = TOKEN_PQA_APO_APO;
                             inLockModeBackup = inLockMode;
                             inLockModeNext = IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE;
                             inLockMode = IN_LOCK_MODE_SECOND_APOSTROPHE_EXPECTED;
@@ -2142,14 +2187,14 @@ public class FastTJParser implements LogParser {
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
                             mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
-                            // зафиксировать конец текущего токена (-1 \r)
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 1, TOKEN_KIND_LOCK_VALUE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-2 : "')
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         case IN_LOCK_MODE_LOCK_TYPE:
                             mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
-                            // фиксируем завершение токена
-                            lckelt = lckel.addToken(tokenBegin, firstBytePos, TOKEN_KIND_LOCK_TYPE, tokenRowLevel);
+                            // зафиксировать конец текущего токена (-1 : ')
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos, tokenKind, tokenRowLevel, tokenQuotation);
                             inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
                             break;
                         default:
@@ -2160,8 +2205,10 @@ public class FastTJParser implements LogParser {
                     switch (inLockMode) {
                         case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                             // зафиксировать начало токена значения
+                            lockValueMode = LOCK_VALUE_MODE_APOSTROPHED;
                             tokenKind = TOKEN_KIND_LOCK_VALUE;
-                            tokenBegin = firstBytePos + 1; // + апостроф
+                            tokenBegin = firstBytePos; // + апостроф
+                            tokenQuotation = (mode == MODE_PLAIN_VALUE) ? TOKEN_PQA_PLAIN_APO : TOKEN_PQA_QM_APO;
                             inLockMode = IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE;
                             break;
                         case IN_LOCK_MODE_LOCK_VALUE: // Fld43122=T'20231103120000'
@@ -2174,6 +2221,12 @@ public class FastTJParser implements LogParser {
                         case IN_LOCK_MODE_LOCK_VALUE_INSIDE_APOSTROPHE:
                             inLockMode = IN_LOCK_MODE_LOCK_VALUE_IA_SPACE_OR_APO_EXPECTED;
                             break;
+                        case IN_LOCK_MODE_LOCK_VALUE_IQM_SPACE_OR_QM_EXPECTED:
+                            mode = MODE_VALUE_IA_COMMA_OR_APO_EXPECTED;
+                            // зафиксировать конец текущего токена (-1 \r)
+                            lckelt = lckel.addToken(tokenBegin, firstBytePos - 2, tokenKind, tokenRowLevel, tokenQuotation);
+                            inLockMode = IN_LOCK_MODE_RECORD_TERMINATE;
+                            break;
                         default:
                             throw new ParseException("wrong apostrophe appear");
                     }
@@ -2182,31 +2235,38 @@ public class FastTJParser implements LogParser {
             default: // любой другой однобайтный символ (в т.ч. EOF) или символ из двух и более байтов
                 switch (inLockMode) {
                     case IN_LOCK_MODE_RECORD_TERMINATE:
-                        // зафиксировать конец текущего токена
                         valueMode = VALUE_MODE_GENERAL;
                         break;
                     case IN_LOCK_MODE_SPACENAME_EXPECTED:
                         // зафиксировать начало токена имени пространства блокировки
                         tokenKind = TOKEN_KIND_LOCK_SPACE;
                         tokenBegin = firstBytePos;
+                        tokenQuotation = TOKEN_PQA_UNDEFINED;
                         inLockMode = IN_LOCK_MODE_SPACENAME;
                         break;
                     case IN_LOCK_MODE_LOCK_TYPE_EXPECTED:
                         // зафиксировать начало токена типа блокировки
                         tokenKind = TOKEN_KIND_LOCK_TYPE;
                         tokenBegin = firstBytePos;
+                        tokenQuotation = TOKEN_PQA_UNDEFINED;
                         inLockMode = IN_LOCK_MODE_LOCK_TYPE;
                         break;
                     case IN_LOCK_MODE_LOCK_KEY_EXPECTED:
                         // зафиксировать начало токена ключа элемента блокировки
                         tokenKind = TOKEN_KIND_LOCK_KEY;
                         tokenBegin = firstBytePos;
+                        tokenQuotation = TOKEN_PQA_UNDEFINED;
                         inLockMode = IN_LOCK_MODE_LOCK_KEY;
                         break;
                     case IN_LOCK_MODE_LOCK_VALUE_EXPECTED:
                         // зафиксировать начало токена значения элемента блокировки
+                        lockValueMode = LOCK_VALUE_MODE_PLAIN;
                         tokenKind = TOKEN_KIND_LOCK_VALUE;
                         tokenBegin = firstBytePos;
+                        tokenQuotation = 
+                                (mode == MODE_PLAIN_VALUE)
+                                ? TOKEN_PQA_PLAIN_PLAIN 
+                                : (mode == MODE_VALUE_INSIDE_QUOTATION_MARK) ? TOKEN_PQA_QM_PLAIN : TOKEN_PQA_APO_PLAIN;
                         inLockMode = IN_LOCK_MODE_LOCK_VALUE;
                         break;
                     case IN_LOCK_MODE_SPACENAME:
@@ -2223,83 +2283,4 @@ public class FastTJParser implements LogParser {
         
     }
     
-    
-    @SuppressWarnings("SleepWhileInLoop")
-    public static void main(String[] args) throws IOException, InterruptedException {
-        ParserRecordsStorage recordsStorage = new ParserNullStorage(); // new ParserListStorage();
-        FastTJParser parser = new FastTJParser();
-        parser.setRecordsStorage(recordsStorage);
-        
-        List<File> sources = new ArrayList<>();
-        
-//      sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456");
-//      sources = filesFromDirectory("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72");
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Queries\\rphost_31828\\23103119.log"));
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\SQL_Locks\\rphost_58776\\23103119.log")); // 2Gb
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24011700.log")); // Locks
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\23120112.log")); // Transactions
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L71\\23021816.log")); // Locks
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110314.log")); // Locks 648 M
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110312.log")); // Locks 1 G
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\1C_Locks\\rphost_5456\\23110313.log")); // Locks 1 G
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\test.txt"));
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L70\\ERP_prod_1541\\Calls\\rphost_5456\\23110313.log")); // Calls
-//      sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\L72\\MonitorLogs\\Торговля_АА_1541\\Transactions\\rphost_31828\\23103119.log"));
-        sources.add(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\24012915.log"));
-
-        String filterJson = "{'or' : "
-                + "[ "
-                + "{ 'and' : "
-                + "    [ "
-                + "    { 'property' : 'WaitConnections[?]', 'operation' : 'filled', 'pattern' : '' } "
-                + "    ]"
-                + "} "
-                + "]}";
-        Filter filter = Filter.fromJson(filterJson);
-        filter = null;
-        
-        ParserParameters parameters = new ParserParameters();
-        parameters.setDelay(0);
-        parameters.setMaxTokenLength(1024 * 32);
-        parameters.setLogParseExceptions(false);
-
-        long duration = 0;
-        long TESTS_COUNT = 1; // 100;
-        
-        for (int i = 0; i < TESTS_COUNT; i++) {
-            
-            for (File file : sources) {
-                FileState state = new FileState(file);
-                state.setPointer(0);
-                System.out.println("file " + file.getAbsolutePath());
-                long m = new Date().getTime();
-                try {
-                    parser.parse(state, "UTF-8", state.getPointer(), 2 + 999999999, filter, parameters);
-                }
-                catch (ParseException | TokenMgrError ex) {
-                    System.out.println("!!! parse error: " + ex.getMessage());
-                }
-                duration = duration + (new Date().getTime() - m);
-                System.out.println("found rows: " + recordsStorage.size());
-                System.out.println(" file size: " + file.length());
-                System.out.println("bytes read: " + (parser.getFilePos()));
-                if (parser.getFilePos() != file.length()) {
-                    System.out.println("      ====: ^");
-                }
-                recordsStorage.clear();
-                System.gc();
-            }
-            
-            Thread.sleep(1000);
-            System.out.println(String.format(
-                    "intermediate avg test time after %d tests: %f sec\n",
-                    i + 1,
-                    (duration / (i + 1))/ 1000.0f));
-        
-        }
-        
-        System.out.println("avg test time: " + ((duration / TESTS_COUNT)/ 1000.0f) + " sec");
-
-    }
-
 }
