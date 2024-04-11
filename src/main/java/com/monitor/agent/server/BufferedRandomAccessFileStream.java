@@ -3,7 +3,7 @@ package com.monitor.agent.server;
 /*
  * Copyright 2015 The Apache Software Foundation.
  *
-* Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -187,7 +187,7 @@ public class BufferedRandomAccessFileStream extends InputStream {
         }
         while (from <= to && (strb[from] == '\r' || strb[from] == '\n')) from++;
         while (from <  to && (strb[to] == '\r' || strb[to] == '\n')) to--;
-        if (from >= to) return "";
+        if (from > to) return "";
         return new String(strb, from, (to - from + 1), chs);
     }
 

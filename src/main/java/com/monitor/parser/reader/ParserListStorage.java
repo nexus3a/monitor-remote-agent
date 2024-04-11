@@ -42,14 +42,21 @@ public class ParserListStorage implements ParserRecordsStorage {
     public void knock() throws Exception {
     }
     
+    @Override
     public int size() {
         return records.size();
     }
     
+    @Override
     public void clear() {
         records.clear();
     }
     
+    @Override
+    public void close() {
+    }
+
+    @Override
     public List<byte[]> getAll() {
         return records;
     }

@@ -39,10 +39,12 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
 
 public class LogRecordsHandler extends DefaultResponder {
 
     private static final int PARSE_EXEC_TIMEOUT = 10 * 60 * 1000; // 10 минут
+    private static final String SECTION_LOCKED_MESSAGE = "SECTION_LOCKED";
 
     @Override
     @SuppressWarnings({"Convert2Lambda", "UseSpecificCatch"})
@@ -140,62 +142,74 @@ public class LogRecordsHandler extends DefaultResponder {
                         // секций, то используется параметр "global-lock"
                         //
                         boolean globalLock = !"false".equalsIgnoreCase((String) parameters.get("global-lock", "false"));
-                        Object sectionLock = (section == null || globalLock) ? server : section;
+                        Lock lock = (section == null || globalLock) ? server.getLock() : section.getLock();
 
-                        synchronized (sectionLock) {
-
-                            Collection<FileWatcher> watchers = server.getWatchers(section);
-
-                            // подтверждаем факт успешного приёма предыдущей порции данных:
-                            // переустанавливаем указатели файлов в рабочее положение
+                        if (lock.tryLock()) {
+                            // удалось заблокировать секцию - читаем данные из неё
                             //
-                            if (!"false".equalsIgnoreCase((String) parameters.get("ack", "false"))) {
+                            try {
+                                Collection<FileWatcher> watchers = server.getWatchers(section);
+
+                                // подтверждаем факт успешного приёма предыдущей порции данных:
+                                // переустанавливаем указатели файлов в рабочее положение
+                                //
+                                if (!"false".equalsIgnoreCase((String) parameters.get("ack", "false"))) {
+                                    for (FileWatcher watcher : watchers) {
+                                        synchronized (watcher) {
+                                            Collection<FileState> states = watcher.getWatched();
+                                            for (FileState state : states) {
+                                                state.setPointer(state.getNewPointer());
+                                            }
+                                            Registrar.writeStateToJson(watcher.getSincedbFile(), states);
+                                        }
+                                    }
+                                }
+
+                                // читаем новые записи и в случае использования хранилища ParserStreamStorage сразу
+                                // выводим их в поток; в случае использования хранилища вида ParserListStorage вывод
+                                // в поток будет в отдельном цикле, ниже
+                                //
+                                if (storage instanceof ParserStreamStorage) {
+                                    output.write("[\n".getBytes(StandardCharsets.UTF_8));
+                                }
+                                reader = new ParserFileReader(maxRecords, filter, draft, parserParams, storage);
                                 for (FileWatcher watcher : watchers) {
                                     synchronized (watcher) {
-                                        Collection<FileState> states = watcher.getWatched();
-                                        for (FileState state : states) {
-                                            state.setPointer(state.getNewPointer());
+                                        watcher.checkFiles();
+                                        int recordsRead = watcher.readFiles(reader);
+                                        if (recordsRead >= maxRecords) {
+                                            break;
                                         }
-                                        Registrar.writeStateToJson(watcher.getSincedbFile(), states);
                                     }
+                                    System.gc();
                                 }
+                                if (storage instanceof ParserStreamStorage) {
+                                    output.write("]".getBytes(StandardCharsets.UTF_8));
+                                }
+                            }
+                            finally {
+                                lock.unlock();
                             }
 
-                            // читаем новые записи и в случае использования хранилища ParserStreamStorage сразу
-                            // выводим их в поток; в случае использования хранилища вида ParserListStorage вывод
-                            // в поток будет в отдельном цикле, ниже
+                            // здесь вывод в поток записей, если используется хранилище ParserListStorage:
+                            // записи выводятся после накопления в хранилище, а не в процессе разбора
                             //
-                            if (storage instanceof ParserStreamStorage) {
+                            if (storage instanceof ParserListStorage && reader != null) {
+                                List<byte[]> records = reader.getRecords();
+                                final byte[] comma = ",\n".getBytes(StandardCharsets.UTF_8);
                                 output.write("[\n".getBytes(StandardCharsets.UTF_8));
-                            }
-                            reader = new ParserFileReader(maxRecords, filter, draft, parserParams, storage);
-                            for (FileWatcher watcher : watchers) {
-                                synchronized (watcher) {
-                                    watcher.checkFiles();
-                                    int recordsRead = watcher.readFiles(reader);
-                                    if (recordsRead >= maxRecords) {
-                                        break;
-                                    }
+                                for (byte[] record : records) {
+                                    output.write(record);
+                                    output.write(comma);
                                 }
-                                System.gc();
-                            }
-                            if (storage instanceof ParserStreamStorage) {
                                 output.write("]".getBytes(StandardCharsets.UTF_8));
                             }
                         }
-
-                        // здесь вывод в поток записей, если используется хранилище ParserListStorage:
-                        // записи выводятся после накопления в хранилище, а не в процессе разбора
-                        //
-                        if (storage instanceof ParserListStorage) {
-                            List<byte[]> records = reader.getRecords();
-                            final byte[] comma = ",\n".getBytes(StandardCharsets.UTF_8);
-                            output.write("[\n".getBytes(StandardCharsets.UTF_8));
-                            for (byte[] record : records) {
-                                output.write(record);
-                                output.write(comma);
-                            }
-                            output.write("]".getBytes(StandardCharsets.UTF_8));
+                        else {
+                            // не удалось заблокировать секцию для получения данных -
+                            // выведем в поток служебную запись
+                            //
+                            output.write(SECTION_LOCKED_MESSAGE.getBytes(StandardCharsets.UTF_8));
                         }
                     }
                     catch (Exception ex) {
@@ -205,6 +219,7 @@ public class LogRecordsHandler extends DefaultResponder {
                         catch (IOException iex) {
                         }
                     }
+                    
                     try {
                         if (reader != null) {
                             reader.done();
@@ -212,6 +227,7 @@ public class LogRecordsHandler extends DefaultResponder {
                     }
                     catch (Throwable ex) {
                     }
+                    
                     try {
                         pipe.close(); // закрывается при закрытии output, а output закрывает chunkedResponse
                     }

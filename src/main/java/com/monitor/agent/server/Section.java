@@ -17,14 +17,20 @@ package com.monitor.agent.server;
  *
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.HashMap;
 import java.util.Objects;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Section {
     
     private static final HashMap<String, Section> sections = new HashMap<>();
     
     private final String name;
+    
+    @JsonIgnore
+    private Lock lock;
     
     public static Section byName(String name) {
         
@@ -50,12 +56,17 @@ public class Section {
 
     private Section(String name) {
         this.name = name;
+        this.lock = new ReentrantLock();
     }
 
     public String getName() {
         return name;
     }
 
+    public Lock getLock() {
+        return lock;
+    }
+    
     @Override
     public int hashCode() {
         int hash = 5;

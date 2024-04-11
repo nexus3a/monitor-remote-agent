@@ -60,6 +60,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -81,7 +83,7 @@ import org.apache.log4j.spi.RootLogger;
 public class Server {
 
     private static final Logger logger = Logger.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.7.7";
+    private static final String AGENT_VERSION = "2.7.13";
     private static final String SINCEDB = ".monitor-remote-agent";
     private static final String SINCEDB_CAT = "sincedb";
     private static Level logLevel = INFO;
@@ -106,6 +108,7 @@ public class Server {
     private final Semaphore pauseLock = new Semaphore(1);
     private final HashMap<Section, FileWatcher> watchers = new HashMap<>();
     
+    private Lock lock = new ReentrantLock();
     
     public static boolean isCaseInsensitiveFileSystem() {
         return System.getProperty("os.name").toLowerCase().startsWith("win");
@@ -210,6 +213,10 @@ public class Server {
     
     public boolean isPaused() {
         return pauseLock.availablePermits() == 0;
+    }
+    
+    public Lock getLock() {
+        return lock;
     }
     
     private void sendStop() throws MalformedURLException, ProtocolException, IOException {

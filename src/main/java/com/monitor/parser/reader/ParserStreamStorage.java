@@ -79,6 +79,10 @@ public class ParserStreamStorage implements ParserRecordsStorage {
     }
 
     @Override
+    public void close() {
+    }
+
+    @Override
     public List<byte[]> getAll() {
         return new ArrayList<>();
     }

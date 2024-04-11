@@ -65,36 +65,6 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         Server httpServer = uriResource.initParameter(Server.class);
         httpServer.waitForUnpause(); // ожидания снятия сервера с паузы
 
-        Map<String, List<String>> parameters = session.getParameters();
-
-        String spid = null;
-        if (parameters.containsKey("spid")) {
-            spid = parameters.get("spid").get(0);
-        }
-
-        String infoBaseId = null;
-        if (parameters.containsKey("infoBase")) {
-            infoBaseId = parameters.get("infoBase").get(0);
-        }
-
-        String clusterId = null;
-        if (parameters.containsKey("cluster")) {
-            clusterId = parameters.get("cluster").get(0);
-        }
-
-        String serverId = null;
-        if (parameters.containsKey("server")) {
-            serverId = parameters.get("server").get(0);
-        }
-
-        String[] props = null;
-        if (parameters.containsKey("props")) {
-            String sprops = parameters.get("props").get(0);
-            if (!sprops.isEmpty()) {
-                props = sprops.split("[,;:-]");
-            }
-        }
-
         Configuration config = httpServer.getConfigManager().getConfig();
         ObjectMapper mapper = new ObjectMapper();
 
@@ -109,6 +79,19 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         boolean infoBaseFound = false;
         
         try {
+            RequestParameters parameters = getParameters();
+
+            String spid = (String) parameters.get("spid", null);
+            String infoBaseId = (String) parameters.get("infoBase", null);
+            String clusterId = (String) parameters.get("cluster", null);
+            String serverId = (String) parameters.get("server", null);
+            String sprops = (String) parameters.get("props", null);
+
+            String[] props = null;
+            if (sprops != null && !sprops.isEmpty()) {
+                props = sprops.split("[,;:-]");
+            }
+
             // перебираем все серверы, кластеры внутри серверов и информационные базы внутри кластеров;
             // ищем совпадения по идентификаторам, переданным в качестве параметров (если не передали,
             // то по всем из коллекции); для информационной базы получаем данные с помощью ras-агента
@@ -116,8 +99,11 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
             List<OneCServerInfo> serversInfo = new ArrayList<>();
             for (OneCServerConfig serverConfig : config.getOneCServers()) {
                 if (serverConfig == null
+                        || serverId != null && !serverId.equals(serverConfig.getId())
                         || serverConfig.getClusters() == null
-                        || serverId != null && !serverId.equals(serverConfig.getId())) {
+                        || serverConfig.getRasAddress() == null
+                        || serverConfig.getRasAddress().isEmpty()
+                        || serverConfig.getRasPort() == 0) {
                     continue;
                 }
                 serverFound = true;

@@ -21,6 +21,7 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
@@ -66,6 +67,7 @@ public class FastTJParser implements LogParser {
     private static final Pattern UNPRINTABLE_PATTERN = Pattern.compile("[^\\u0009\\u000A\\u000D\\u0020-\\uD7FF\\uE000-\\uFFFD\\u10000-\\u10FFFF]");    
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss");
     private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("GMT+0");
+    private static final long TIME_BASE = - Instant.parse("0001-01-01T00:00:00.00Z").toEpochMilli() * 1000;
     
     static {
         DATE_FORMAT.setTimeZone(TIME_ZONE);
@@ -94,7 +96,7 @@ public class FastTJParser implements LogParser {
     private static final byte MODE_KEY_EXPECTED = 8;                       // ожидается начало key
     private static final byte MODE_KEY = 9;                                // чтение key
     private static final byte MODE_VALUE_EXPECTED = 10;                    // ожидается начало value
-    private static final byte MODE_PLAIN_VALUE = 11;                             // чтение value
+    private static final byte MODE_PLAIN_VALUE = 11;                       // чтение value
     private static final byte MODE_VALUE_INSIDE_QUOTATION_MARK = 12;       // чтение value в кавычках
     private static final byte MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED = 13;    // ожидается запятая или кавычка
     private static final byte MODE_VALUE_INSIDE_APOSTROPHE = 14;           // чтение value в апострофах
@@ -370,6 +372,7 @@ public class FastTJParser implements LogParser {
     }
 
     
+    @SuppressWarnings("ManualArrayToCollectionCopy")
     private String[] uniqueArray(String str) {
         if (!str.contains(",")) {
             String[] result = new String[1];
@@ -1028,6 +1031,7 @@ public class FastTJParser implements LogParser {
 
                 int lockMemberNum = 0;
                 long tstamp = 0L;
+                long durtn = 0L;
                 for (HashMap<String, Object> lockMember : lockMembers) {
                     if (++lockMemberNum > 1) {
                         // здесь по-хорошему нужно делать клон logRecord, чтобы записи лога были
@@ -1038,8 +1042,10 @@ public class FastTJParser implements LogParser {
                         //
                         if (lockMemberNum == 2) {
                             tstamp = logRecord.timestamp;
+                            durtn = (long) logRecord.get(DURATION_PROP_NAME);
                         }
                         logRecord.put(TIMESTAMP_PROP_NAME, String.valueOf(++tstamp));
+                        logRecord.put(DURATION_PROP_NAME, String.valueOf(++durtn));
                     }
                     // из-за того, что в парсере предусмотрена возможность не заполнять данные блокировок
                     // при том, что знания о количестве данных блокировок влияют на вычисляемые реквизиты
@@ -1089,6 +1095,7 @@ public class FastTJParser implements LogParser {
                 if (addFields != null) {
                     logRecord.putAll(addFields);
                 }
+                beforeStoreRecord(logRecord);
                 recordsStorage.put(logRecord);
             }
             if (delay > 0) {
@@ -1110,6 +1117,27 @@ public class FastTJParser implements LogParser {
     }
 
     
+    public void beforeStoreRecord(OneCTJRecord logRecord) throws java.text.ParseException {
+        long tstmp = (long) logRecord.get("timestamp");
+        long drtn = (long) logRecord.get("duration");
+        String startDateTime = (String) logRecord.get("startDateTime");
+
+        Date t = new Date((tstmp - TIME_BASE - drtn) / 1000L);
+        Date d = DATE_FORMAT.parse(startDateTime);
+//        System.out.println("timestamp = " + tstmp);
+//        System.out.println("TIME_BASE = " + TIME_BASE);
+//        System.out.println("t = " + t);
+//        System.out.println("d = " + d);
+        long dt = d.getTime() - t.getTime();
+        if (dt < 0) {
+            dt = -dt;
+        }
+        if (dt > 1000) {
+            System.out.println("dt == " + dt);
+        }
+    }
+    
+    
     private boolean buildRecord() throws IOException {
         OneCTJRecord logrec = kvrc.lr;
         logrec.clear();
@@ -1119,8 +1147,8 @@ public class FastTJParser implements LogParser {
         logrec.put(DATE_TIME_PROP_NAME, yyyyMMddhh + smmss);
         logrec.put(ONLY_TIME_PROP_NAME, shours + smmss);
         
-        logrec.put(TIMESTAMP_PROP_NAME, String.valueOf(timestamp));
-        logrec.put(DURATION_PROP_NAME, String.valueOf(duration));
+        logrec.put(TIMESTAMP_PROP_NAME, timestamp);
+        logrec.put(DURATION_PROP_NAME, duration);
         logrec.put(START_DATE_TIME_PROP_NAME, DATE_FORMAT.format(new Date((timestamp - MICROSECONDS_TO_1970 - duration) / 1000L)));
         
         logrec.put(EVENT_PROP_NAME, eventName);
