@@ -45,7 +45,7 @@ public class ParserPipedInputStream extends PipedInputStream {
         while (!eos && available() == 0 && System.currentTimeMillis() < till) {
             notifyAll();
             try {
-                wait(50);
+                wait(1);
             }
             catch (InterruptedException ex) {
                 break;
@@ -58,7 +58,6 @@ public class ParserPipedInputStream extends PipedInputStream {
     public void close() throws IOException {
         super.close();
         pipe.close();
-        System.gc();
     }
     
 }

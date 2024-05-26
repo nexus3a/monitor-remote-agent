@@ -23,7 +23,6 @@ import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.PMParser;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParserParameters;
-import com.monitor.parser.TJParser;
 import com.monitor.parser.onecf.FastTJParser;
 
 import java.io.File;
@@ -31,6 +30,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import org.apache.log4j.Logger;
 
 public class ParserFileReader {
@@ -39,7 +39,7 @@ public class ParserFileReader {
 
     protected int spoolSize = 0;
     private final ParserRecordsStorage records;
-    private Map<File, Long> pointerMap;
+    private Map<FileState, Long> pointerMap;
     private int recordsCount;
     private final HashMap<LogFormat, LogParser> parsers;
     private final Filter filter;
@@ -70,16 +70,24 @@ public class ParserFileReader {
         if (logger.isTraceEnabled()) {
             logger.trace("Reading " + fileList.size() + " file(s)");
         }
-        pointerMap = new HashMap<>(fileList.size(), 1);
+        pointerMap = new HashMap<>();
         for (FileState state : fileList) {
             recordsCount += readFile(state, spoolSize - recordsCount);
-        }
-        if (!draft) {
-            for (FileState state : fileList) {
-                state.setNewPointer(pointerMap.get(state.getFile()));
+            if (recordsCount == spoolSize) {
+                break;
             }
         }
-        pointerMap.clear();
+        if (!draft) {
+            for (Entry<FileState, Long> entry : pointerMap.entrySet()) {
+                entry.getKey().setNewPointer(entry.getValue().longValue());
+            }
+            
+//          for (FileState state : fileList) {
+//              state.setNewPointer(pointerMap.get(state.getFile()));
+//          }
+        }
+//      pointerMap.clear();
+        pointerMap = null;
         return recordsCount;
     }
 
@@ -118,7 +126,7 @@ public class ParserFileReader {
                 logger.trace("  Records read : " + recordsRead);
             }
         }
-        pointerMap.put(file, pointer);
+        pointerMap.put(state, pointer);
         return recordsRead; // Return number of events read
     }
 

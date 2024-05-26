@@ -38,8 +38,8 @@ import java.nio.charset.Charset;
 
 public class BufferedRandomAccessFileStream extends InputStream {
 
-    private final RandomAccessFile file;
-    private final byte[] buffer; // Uses a byte instead of a char buffer for efficiency reasons
+    private RandomAccessFile file;
+    private byte[] buffer; // Uses a byte instead of a char buffer for efficiency reasons
     private int bufend = 0;
     private int bufpos = 0;
     private long realpos = 0; // The position inside the actual file
@@ -213,7 +213,11 @@ public class BufferedRandomAccessFileStream extends InputStream {
 
     @Override
     public void close() throws IOException {
-        file.close();
+        if (file != null) {
+            file.close();
+        }
+        file = null;
+        buffer = null;
         backSeekCount = 0;
     }
 

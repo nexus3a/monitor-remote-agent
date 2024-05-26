@@ -61,4 +61,8 @@ public class ConfigurationManager {
         return this;
     }
     
+    public String getConfigFilePath() {
+        return configFile.getPath();
+    }
+    
 }

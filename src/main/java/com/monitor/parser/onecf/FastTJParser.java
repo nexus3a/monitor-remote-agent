@@ -59,7 +59,7 @@ public class FastTJParser implements LogParser {
     public static boolean DEBUG_SYMBOLS = false;
     public static boolean DEBUG_RECORDS = false;
     
-    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 100; // 200Mb 
+    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 200Mb 
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
@@ -68,6 +68,7 @@ public class FastTJParser implements LogParser {
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss");
     private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("GMT+0");
     private static final long TIME_BASE = - Instant.parse("0001-01-01T00:00:00.00Z").toEpochMilli() * 1000;
+    private static final long GC_PER_RECORDS = 10000L;
     
     static {
         DATE_FORMAT.setTimeZone(TIME_ZONE);
@@ -243,6 +244,7 @@ public class FastTJParser implements LogParser {
     private long validBytesRead = 0L;
     private long unfilteredCount = 0L;
     private long filteredCount;
+    private final long gcPerRecords = GC_PER_RECORDS;
     private int delay;
     private int maxTokenLength;
     private int getTokenLength;
@@ -432,7 +434,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class KeyValueBounds {
+    private static class KeyValueBounds {
         public long kb = 0;
         public long ke = 0;
         public long vb = 0;
@@ -442,7 +444,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class KeyValuesRecord {
+    private static class KeyValuesRecord {
         public final KeyValueBounds[] kv = new KeyValueBounds[64];
         public final OneCTJRecord lr = new OneCTJRecord();
         public long bytesRead = 0;                           // поизиция конца записи в файле
@@ -468,7 +470,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class Token {
+    private static class Token {
         public long tb = 0;                     // token begin file pos
         public long te = 0;                     // token end file pos
         public byte tk = TOKEN_KIND_UNDEFINED;  // token kind
@@ -477,7 +479,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class LockElement {
+    private static class LockElement {
         // последовательнсть токенов - это описание элемента блокировки:
         // 1) пространство блокировки
         // 2) тип блокировки (shared|exclusive)
@@ -527,7 +529,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class Lock {
+    private static class Lock {
         public ArrayList<LockElement> lel; // lock elements list
         public int lec;                    // lock elements count
         public int maxlec;                 // maximum lock elements count after previous iterations
@@ -568,7 +570,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class ContainsMatcher {
+    private static class ContainsMatcher {
         
         private final byte[] src;     // байты исходной строки
         private int[] searches;       // список следующих проверяемых позищий в src (когда предыдущие подошли)
@@ -771,7 +773,7 @@ public class FastTJParser implements LogParser {
     }
 
     
-    private class EqualsMatcher {
+    private static class EqualsMatcher {
         
         private final byte[] src;     // байты исходной строки
         private final int srcLen;
@@ -949,13 +951,13 @@ public class FastTJParser implements LogParser {
 
     
     private boolean onLogRecord(KeyValuesRecord keyValueRecord) {
+        boolean result;
         if (filteredCount >= maxCount) {
             return false;
         }
         if (keyValueRecord.isEmpty) {
             return true;
         }
-        unfilteredCount++;
         validBytesRead = keyValueRecord.bytesRead - 1;
         OneCTJRecord logRecord = keyValueRecord.lr;
         if (logRecord.containsLocks) {
@@ -963,7 +965,7 @@ public class FastTJParser implements LogParser {
             // каждая запись пространства блокировок со своими данными
             // должна быть организована в отдельную запись журнала
             //
-            boolean result = true;
+            result = true;
 
             ArrayList<HashMap<String, Object>> lockMembers = (ArrayList<HashMap<String, Object>>) logRecord.get(LOCKS_PROP_NAME);
             if (lockMembers != null && !lockMembers.isEmpty()) {
@@ -1073,18 +1075,26 @@ public class FastTJParser implements LogParser {
 
                     lockMember.put(LOCK_SPACE_RECORDS_PROP_NAME + ".hash()", lockMemberRecords.hashCode());
                     logRecord.put(LOCKS_PROP_NAME, lockMember);
-                    result = filterAndStoreRecord(logRecord) && result; // здесь && result должен быть в конце!
+                    if (!filterAndStoreRecord(logRecord)) {
+                        result = false;
+                    }
                 }
             }
             else {
                 logRecord.put(LOCKS_PROP_NAME, "");
                 result = filterAndStoreRecord(logRecord);
             }
-            return result;
         }
         else {
-            return filterAndStoreRecord(logRecord);
+            result = filterAndStoreRecord(logRecord);
         }
+
+        unfilteredCount++;
+        if (unfilteredCount % gcPerRecords == 0) {
+            System.gc();
+        }
+
+        return result;
     }
 
     
@@ -1095,8 +1105,9 @@ public class FastTJParser implements LogParser {
                 if (addFields != null) {
                     logRecord.putAll(addFields);
                 }
-                beforeStoreRecord(logRecord);
-                recordsStorage.put(logRecord);
+                if (beforeStoreRecord(logRecord)) {
+                    recordsStorage.put(logRecord);
+                }
             }
             if (delay > 0) {
                 Thread.sleep(delay);
@@ -1117,24 +1128,8 @@ public class FastTJParser implements LogParser {
     }
 
     
-    public void beforeStoreRecord(OneCTJRecord logRecord) throws java.text.ParseException {
-        long tstmp = (long) logRecord.get("timestamp");
-        long drtn = (long) logRecord.get("duration");
-        String startDateTime = (String) logRecord.get("startDateTime");
-
-        Date t = new Date((tstmp - TIME_BASE - drtn) / 1000L);
-        Date d = DATE_FORMAT.parse(startDateTime);
-//        System.out.println("timestamp = " + tstmp);
-//        System.out.println("TIME_BASE = " + TIME_BASE);
-//        System.out.println("t = " + t);
-//        System.out.println("d = " + d);
-        long dt = d.getTime() - t.getTime();
-        if (dt < 0) {
-            dt = -dt;
-        }
-        if (dt > 1000) {
-            System.out.println("dt == " + dt);
-        }
+    public boolean beforeStoreRecord(OneCTJRecord logRecord) throws java.text.ParseException {
+        return true;
     }
     
     
@@ -1421,12 +1416,17 @@ public class FastTJParser implements LogParser {
                         errorFragmentFile);
             }
             exception = ex;
-            throw new ParseException(ex.getMessage() + " at line " + fileLinesRead);
+            throw new ParseException(ex.getMessage() + " at line " + fileLinesRead + "; file " + state.getFile().getPath());
         }
         catch (Exception ex) {
             exception = ex;
             throw ex;
         }
+        finally {
+            kvr0.clear();
+            kvr1.clear();
+        }
+        stream = null;
     }
 
 
@@ -1461,7 +1461,7 @@ public class FastTJParser implements LogParser {
         maxTokenLength = parameters == null ? Integer.MAX_VALUE : parameters.getMaxTokenLength();
         getTokenLength = maxTokenLength == Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) (maxTokenLength * 1.05);
 
-        ContainsMatcher matcher = new ContainsMatcher("57:18.039118-1,DBMSSQL,5,p:processName=Торговля_АА");
+//      ContainsMatcher matcher = new ContainsMatcher("57:18.039118-1,DBMSSQL,5,p:processName=Торговля_АА");
         StringConstructor sc = new StringConstructor();
         
         kvcc = -1;
