@@ -70,7 +70,7 @@ public class DirectoryWatcher {
      * набор можно связать со слушателем изменений каталога. Для использования указанного
      * набора в качестве ключа карты слушателей и создан данный класс (см. listeners)
      */
-    public class WatchKey {
+    public static class WatchKey {
         
         String wildCard;
         IOFileFilter fileFilter;

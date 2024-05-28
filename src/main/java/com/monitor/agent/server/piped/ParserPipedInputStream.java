@@ -56,6 +56,7 @@ public class ParserPipedInputStream extends PipedInputStream {
 
     @Override
     public void close() throws IOException {
+        pipe.getOutput().close();
         super.close();
         pipe.close();
     }

@@ -32,11 +32,11 @@ public class ParserPipedOutputStream extends PipedOutputStream {
     public ParserPipedStream getPipe() {
         return pipe;
     }
-    
+
     @Override
     public void close() throws IOException {
-        super.close();
         pipe.getInput().enough();
+        super.close();
     }
     
 }

@@ -57,7 +57,7 @@ public class LogRecordsHandler extends DefaultResponder {
 
         Server server = uriResource.initParameter(Server.class);
         server.waitForUnpause(); // ожидания снятия сервера с паузы
-
+        
         final ParserPipedStream pipe;
 
         try {
@@ -178,10 +178,10 @@ public class LogRecordsHandler extends DefaultResponder {
                                         break;
                                     }
                                 }
-//                                  System.gc();
                             }
                             if (storage instanceof ParserStreamStorage) {
-                                output.write("]".getBytes(StandardCharsets.UTF_8));
+                                output.write("\n]".getBytes(StandardCharsets.UTF_8));
+                                output.flush();
                             }
                         }
                         finally {
@@ -199,7 +199,8 @@ public class LogRecordsHandler extends DefaultResponder {
                                 output.write(record);
                                 output.write(comma);
                             }
-                            output.write("]".getBytes(StandardCharsets.UTF_8));
+                            output.write("\n]".getBytes(StandardCharsets.UTF_8));
+                            output.flush();
                         }
                     }
                     else {
@@ -227,8 +228,7 @@ public class LogRecordsHandler extends DefaultResponder {
                     }
                     finally {
                         try {
-                            pipe.getInput().close(); // закроет pipe, а тот, в свою очередь, закроет output
-//                          pipe.close(); // закрывается при закрытии output, а output закрывает chunkedResponse
+                            pipe.close(); // закрывается при закрытии output, а output закрывает chunkedResponse
                         }
                         catch (IOException ex) {
                         }
