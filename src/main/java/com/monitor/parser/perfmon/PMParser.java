@@ -1,4 +1,4 @@
-package com.monitor.parser;
+package com.monitor.parser.perfmon;
 
 /*
  * Copyright 2021 Aleksei Andreev
@@ -21,11 +21,13 @@ import com.monitor.agent.server.filter.Filter;
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
 import com.monitor.agent.server.PredefinedFields;
 import com.monitor.agent.server.FileState;
+import com.monitor.parser.LogParser;
+import com.monitor.parser.ParseException;
+import com.monitor.parser.ParserParameters;
 import com.monitor.parser.perfmon.PMLogRecord;
 import com.monitor.parser.perfmon.PerfMon;
 import com.monitor.parser.reader.ParserListStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
-import java.io.File;
 import java.io.IOException;
 
 public class PMParser extends PerfMon implements LogParser {
@@ -39,21 +41,6 @@ public class PMParser extends PerfMon implements LogParser {
     private long filteredCount;
     private boolean firstInFile;
     private int delay;
-    
-    
-    public static void main(String[] args) throws IOException, ParseException {
-        ParserListStorage recordsStorage = new ParserListStorage();
-        PMParser parser = new PMParser();
-        parser.setRecordsStorage(recordsStorage);
-
-        File file = new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\PerfMon\\Performance Counter.tsv");
-        FileState state = new FileState(file);
-        state.setPointer(0);
-        parser.parse(state, "UTF-8", state.getPointer(), 5, null, null); // 5 == maxRecords
-        long pos = parser.getFilePos();
-        System.out.println("found " + recordsStorage.size() + " record(s)");
-        System.out.println("bytes read: " + pos);
-    }
     
     
     public PMParser() {

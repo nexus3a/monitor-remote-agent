@@ -35,13 +35,6 @@ public class PerfMon implements PerfMonConstants {
     private int valueIndex = 0;
     private boolean headless = false;
 
-    public static void main(String args[]) throws Throwable {
-        final PerfMon parser = new PerfMon();
-        parser.parse(new File("d:\\java\\projects\\monitor-remote-agent\\src\\test\\logs\\PerfMon\\Performance Counter.tsv"), false, "UTF-8");
-        System.out.println("perfomance: " + parser.getPerfomance());
-        System.out.println("records: " + parser.getRecordsCount());
-    }
-
     public void parse(InputStream inputStream, boolean headless, String encoding) throws ParseException {
 
         ReInit(inputStream, encoding);
@@ -271,6 +264,7 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Constructor with InputStream.
+     * @param stream
      */
     public PerfMon(java.io.InputStream stream) {
         this(stream, null);
@@ -278,6 +272,7 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Reinitialise.
+     * @param stream
      */
     public void ReInit(java.io.InputStream stream) {
         ReInit(stream, null);
@@ -285,6 +280,7 @@ public class PerfMon implements PerfMonConstants {
 
      /** 
       * Reinitialise.
+     * @param stream
       */
     public void ReInit(java.io.Reader stream) {
         jj_input_stream.ReInit(stream, 1, 1);
@@ -299,6 +295,7 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Constructor with generated Token Manager.
+     * @param tm
      */
     public PerfMon(PerfMonTokenManager tm) {
         token_source = tm;
@@ -312,6 +309,7 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Reinitialise.
+     * @param tm
      */
     public void ReInit(PerfMonTokenManager tm) {
         token_source = tm;
@@ -344,6 +342,7 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Get the next Token.
+     * @return 
      */
     final public Token getNextToken() {
         if (token.next != null) {
@@ -359,6 +358,8 @@ public class PerfMon implements PerfMonConstants {
 
     /**
      * Get the specific Token.
+     * @param index
+     * @return 
      */
     final public Token getToken(int index) {
         Token t = token;
@@ -382,12 +383,13 @@ public class PerfMon implements PerfMonConstants {
         }
     }
 
-    private java.util.List<int[]> jj_expentries = new java.util.ArrayList<int[]>();
+    private java.util.List<int[]> jj_expentries = new java.util.ArrayList<>();
     private int[] jj_expentry;
     private int jj_kind = -1;
 
     /**
      * Generate ParseException.
+     * @return 
      */
     public ParseException generateParseException() {
         jj_expentries.clear();

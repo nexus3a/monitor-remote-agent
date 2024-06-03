@@ -20,7 +20,7 @@ package com.monitor.parser.reader;
 import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.LogFormat;
 import com.monitor.agent.server.filter.Filter;
-import com.monitor.parser.PMParser;
+import com.monitor.parser.perfmon.PMParser;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParserParameters;
 import com.monitor.parser.onecf.FastTJParser;
