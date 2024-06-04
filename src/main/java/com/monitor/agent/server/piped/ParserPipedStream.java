@@ -27,7 +27,7 @@ public class ParserPipedStream {
 
     public ParserPipedStream(int timeout) throws IOException {
         this.timeout = timeout;
-        this.input = new ParserPipedInputStream(this);
+        this.input = new ParserPipedInputStream(this, 16 * 1024);
         this.output = new ParserPipedOutputStream(this.input);
     }
 

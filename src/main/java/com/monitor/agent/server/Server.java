@@ -85,7 +85,7 @@ import org.apache.log4j.spi.RootLogger;
 public class Server {
 
     private static final Logger logger = Logger.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.7.16";
+    private static final String AGENT_VERSION = "2.7.17";
     private static final String SINCEDB = ".monitor-remote-agent";
     private static final String SINCEDB_CAT = "sincedb";
     private static Level logLevel = INFO;

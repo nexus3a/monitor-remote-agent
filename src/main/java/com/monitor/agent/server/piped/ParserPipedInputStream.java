@@ -26,9 +26,14 @@ public class ParserPipedInputStream extends PipedInputStream {
     private final int timeout;
     private boolean eos = false;
 
-    public ParserPipedInputStream(ParserPipedStream pipe) {
+    public ParserPipedInputStream(ParserPipedStream pipe, int pipeSize) {
+        super(pipeSize);
         this.pipe = pipe;
         this.timeout = pipe.getTimeout();
+    }
+
+    public ParserPipedInputStream(ParserPipedStream pipe) {
+        this(pipe, 1024);
     }
 
     public ParserPipedStream getPipe() {

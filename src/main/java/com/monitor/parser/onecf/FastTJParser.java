@@ -59,7 +59,7 @@ public class FastTJParser implements LogParser {
     public static boolean DEBUG_SYMBOLS = false;
     public static boolean DEBUG_RECORDS = false;
     
-    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 200Mb 
+    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 2Mb 
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
@@ -424,7 +424,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class StringConstructor {
+    private static class StringConstructor {
         private final byte[] strb = new byte[128];
         private int size = 0;
         private void reset() { size = 0; }
@@ -1386,21 +1386,12 @@ public class FastTJParser implements LogParser {
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
         
-        String fileName = state.getFile().getName();
-        boolean isTJName = fileName.matches("\\d{8}.*\\.log");
-        
         try (BufferedRandomAccessFileStream rafs = new BufferedRandomAccessFileStream(
                 state.getOpenedRandomAccessFile(),
                 STREAM_BUFFER_SIZE)) {
             stream = rafs;
             stream.seek(fromPosition);
-            read(stream,
-                    isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970,
-                    isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0,
-                    isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1,
-                    isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0,
-                    parameters);
-            // в конце (finally) будет rafs.close()
+            read(stream, state.getFile(), parameters);
         }
         catch (ParseException ex) {
             if (parameters != null && parameters.logParseExceptions()) {
@@ -1430,8 +1421,15 @@ public class FastTJParser implements LogParser {
     }
 
 
-    public void read(BufferedRandomAccessFileStream stream, int year, int month, int day, int hour,
-            ParserParameters parameters) throws IOException, ParseException {
+    public void read(BufferedRandomAccessFileStream stream, File file, ParserParameters parameters) 
+            throws IOException, ParseException {
+        
+        String fileName = file.getName();
+        boolean isTJName = fileName.matches("\\d{8}.*\\.log");
+        int year = isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970;
+        int month = isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0;
+        int day = isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1;
+        int hour = isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0;
         
         syear = right("0000" + year, 4);
         smonth = right("00" + month, 2);
