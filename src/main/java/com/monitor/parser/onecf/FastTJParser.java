@@ -346,13 +346,13 @@ public class FastTJParser implements LogParser {
 
     
     private String strip(String value) {
-        byte[] btvalue = value.getBytes();
+        byte[] btvalue = value.getBytes(UTF8);
         int left = indexOfNonWhitespace(btvalue);
         if (left == btvalue.length) {
             return "";
         }
         int right = lastIndexOfNonWhitespace(btvalue);
-        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left) : value;
+        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left, UTF8) : value;
     }
 
     
