@@ -10,7 +10,6 @@ import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
 import com.monitor.parser.reader.ParserNullStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
@@ -23,7 +22,15 @@ import java.io.RandomAccessFile;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,7 +59,7 @@ public class FastTJParser implements LogParser {
     public static boolean DEBUG_SYMBOLS = false;
     public static boolean DEBUG_RECORDS = false;
     
-    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 200Mb 
+    private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 2Mb 
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
@@ -210,7 +217,6 @@ public class FastTJParser implements LogParser {
     private final static String ESCALATING_PROP_NAME = "escalating";
     private final static String WAIT_CONNECTIONS_PROP_NAME = "WaitConnections";
     private final static String LKSRC_PROP_NAME = "lksrc";
-    private final static String PID_FILE_PROP_NAME = "PID";
 
     private final static String LOCKS_PROP_NAME = "Locks";
     private final static String LOCK_SPACE_NAME_PROP_NAME = "space";
@@ -234,7 +240,6 @@ public class FastTJParser implements LogParser {
     private Throwable exception;
     private PredefinedFields addFields;
     private Filter filter;
-    private int pid;
     private int maxCount;
     private long validBytesRead = 0L;
     private long unfilteredCount = 0L;
@@ -341,13 +346,13 @@ public class FastTJParser implements LogParser {
 
     
     private String strip(String value) {
-        byte[] btvalue = value.getBytes();
+        byte[] btvalue = value.getBytes(UTF8);
         int left = indexOfNonWhitespace(btvalue);
         if (left == btvalue.length) {
             return "";
         }
         int right = lastIndexOfNonWhitespace(btvalue);
-        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left) : value;
+        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left, UTF8) : value;
     }
 
     
@@ -419,7 +424,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    private class StringConstructor {
+    private static class StringConstructor {
         private final byte[] strb = new byte[128];
         private int size = 0;
         private void reset() { size = 0; }
@@ -1145,7 +1150,6 @@ public class FastTJParser implements LogParser {
         logrec.put(EVENT_HASH_PROP_NAME, eventName.hashCode()); // TODO: надо?
         
         logrec.put(LEVEL_PROP_NAME, eventLevel);
-        logrec.put(PID_FILE_PROP_NAME, pid);
         
         if (DEBUG_RECORDS) {
             System.out.println(DATE_TIME_PROP_NAME + "=" + logrec.get(DATE_TIME_PROP_NAME));
@@ -1382,23 +1386,12 @@ public class FastTJParser implements LogParser {
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
         
-        String fileName = state.getFile().getName();
-        String fileParent = state.getFile().getParent();
-        pid = Integer.parseInt(fileParent.substring(fileParent.lastIndexOf("_")+1));
-        boolean isTJName = fileName.matches("\\d{8}.*\\.log");
-        
         try (BufferedRandomAccessFileStream rafs = new BufferedRandomAccessFileStream(
                 state.getOpenedRandomAccessFile(),
                 STREAM_BUFFER_SIZE)) {
             stream = rafs;
             stream.seek(fromPosition);
-            read(stream,
-                    isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970,
-                    isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0,
-                    isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1,
-                    isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0,
-                    parameters);
-            // в конце (finally) будет rafs.close()
+            read(stream, state.getFile(), parameters);
         }
         catch (ParseException ex) {
             if (parameters != null && parameters.logParseExceptions()) {
@@ -1428,8 +1421,15 @@ public class FastTJParser implements LogParser {
     }
 
 
-    public void read(BufferedRandomAccessFileStream stream, int year, int month, int day, int hour,
-            ParserParameters parameters) throws IOException, ParseException {
+    public void read(BufferedRandomAccessFileStream stream, File file, ParserParameters parameters) 
+            throws IOException, ParseException {
+        
+        String fileName = file.getName();
+        boolean isTJName = fileName.matches("\\d{8}.*\\.log");
+        int year = isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970;
+        int month = isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0;
+        int day = isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1;
+        int hour = isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0;
         
         syear = right("0000" + year, 4);
         smonth = right("00" + month, 2);

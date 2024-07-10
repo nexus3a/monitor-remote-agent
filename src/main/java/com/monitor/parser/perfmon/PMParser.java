@@ -24,8 +24,6 @@ import com.monitor.agent.server.FileState;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
-import com.monitor.parser.perfmon.PMLogRecord;
-import com.monitor.parser.perfmon.PerfMon;
 import com.monitor.parser.reader.ParserListStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.IOException;
@@ -81,18 +79,12 @@ public class PMParser extends PerfMon implements LogParser {
                 stream.seek(fromPosition);
                 parse(stream, fromPosition > 0, encoding);
             }
-            // в конце (finally) будет stream.close()
         }
         catch (Exception ex) {
             exception = ex;
             throw ex;
         }
         
-        if (fromPosition + super.getBytesRead() >= state.getSize() - 1) {
-            // close random access file if we are at the end of it
-//          stream.close();
-//          state.closeRandomAccessFile();
-        }
     }    
     
 
