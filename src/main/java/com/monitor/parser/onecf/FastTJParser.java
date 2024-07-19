@@ -217,7 +217,7 @@ public class FastTJParser implements LogParser {
     private final static String ESCALATING_PROP_NAME = "escalating";
     private final static String WAIT_CONNECTIONS_PROP_NAME = "WaitConnections";
     private final static String LKSRC_PROP_NAME = "lksrc";
-    private final static String PID_FILE_PROP_NAME = "pid";
+    private final static String PID_PROP_NAME = "pid";
 
     private final static String LOCKS_PROP_NAME = "Locks";
     private final static String LOCK_SPACE_NAME_PROP_NAME = "space";
@@ -236,12 +236,12 @@ public class FastTJParser implements LogParser {
     private boolean v82format;
     private String eventName;
     private int eventLevel;
+    private int pid;
 
     private ParserRecordsStorage recordsStorage;
     private Throwable exception;
     private PredefinedFields addFields;
     private Filter filter;
-    private int pid;
     private int maxCount;
     private long validBytesRead = 0L;
     private long unfilteredCount = 0L;
@@ -1152,7 +1152,7 @@ public class FastTJParser implements LogParser {
         logrec.put(EVENT_HASH_PROP_NAME, eventName.hashCode()); // TODO: надо?
         
         logrec.put(LEVEL_PROP_NAME, eventLevel);
-        logrec.put(PID_FILE_PROP_NAME, pid);
+        logrec.put(PID_PROP_NAME, pid);
         
         if (DEBUG_RECORDS) {
             System.out.println(DATE_TIME_PROP_NAME + "=" + logrec.get(DATE_TIME_PROP_NAME));
@@ -1428,8 +1428,10 @@ public class FastTJParser implements LogParser {
             throws IOException, ParseException {
         
         String fileName = file.getName();
+        
         String fileParent = file.getParent();
-        pid = Integer.parseInt(fileParent.substring(fileParent.lastIndexOf("_")+1));
+        pid = Integer.parseInt(fileParent.substring(fileParent.lastIndexOf("_") + 1));
+        
         boolean isTJName = fileName.matches("\\d{8}.*\\.log");
         int year = isTJName ? Integer.parseInt(fileName.substring(0, 2)) + 2000 : 1970;
         int month = isTJName ? Integer.parseInt(fileName.substring(2, 4)) : 0;
