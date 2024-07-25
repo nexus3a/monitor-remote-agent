@@ -33,6 +33,8 @@ public class OneCServerConfig {
     private boolean central;
     @JsonProperty("logcfg path")
     private String logCfgPath;                    // путь к файлу logcfg.xml
+    @JsonProperty("dumps path")
+    private String dumpsPath;                     // каталог дампов
     private List<FilesConfig> files;              // набор каталогов с технологическим журналом, фильтры данных
     private List<OneCCredentials> administrators; // администраторы центрального сервера (если central == true)
     private List<OneCClusterConfig> clusters;     // кластеры, для которых данный сервер является центральным
@@ -109,6 +111,14 @@ public class OneCServerConfig {
 
     public void setLogCfgPath(String logCfgPath) {
         this.logCfgPath = logCfgPath;
+    }
+
+    public String getDumpsPath() {
+        return dumpsPath;
+    }
+
+    public void setDumpsPath(String dumpsPath) {
+        this.dumpsPath = dumpsPath;
     }
 
     public List<FilesConfig> getFiles() {
