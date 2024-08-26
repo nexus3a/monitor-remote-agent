@@ -31,11 +31,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ParserFileReader {
 
-    private static final Logger logger = Logger.getLogger(ParserFileReader.class);
+    private static final Logger logger = LoggerFactory.getLogger(ParserFileReader.class);
 
     protected int spoolSize = 0;
     private final ParserRecordsStorage records;
@@ -67,9 +68,7 @@ public class ParserFileReader {
     }
 
     public int readFiles(Collection<FileState> fileList) {
-        if (logger.isTraceEnabled()) {
-            logger.trace("Reading " + fileList.size() + " file(s)");
-        }
+        logger.trace("Reading {} file(s)", fileList.size());
         pointerMap = new HashMap<>();
         for (FileState state : fileList) {
             recordsCount += readFile(state, spoolSize - recordsCount);
@@ -98,33 +97,23 @@ public class ParserFileReader {
         if (spaceLeftInSpool <= 0) {
         }
         else if (state.isDeleted()) { // Don't try to read this file
-            if (logger.isTraceEnabled()) {
-                logger.trace("File : " + file + " has been deleted");
-            }
+            logger.trace("File : {} has been deleted", file);
         }
         else if (state.length() == 0) {
-            if (logger.isTraceEnabled()) {
-                logger.trace("File : " + file + " is empty");
-            }
+            logger.trace("File : {} is empty", file);
         }
         else if (!draft && pointer >= state.length()) {
-            if (logger.isTraceEnabled()) {
-                logger.trace("File : " + file + " pointer at EOF");
-            }
+            logger.trace("File : {} pointer at EOF", file);
         }
         else {
+            logger.trace("File : {}", file);
+            logger.trace("  Pointer before reading : {}", pointer);
+            logger.trace("  Space left in spool : {}", spaceLeftInSpool);
             int eventListSizeBefore = records.size();
-            if (logger.isTraceEnabled()) {
-                logger.trace("File : " + file);
-                logger.trace("  Pointer before reading : " + pointer);
-                logger.trace("  Space left in spool : " + spaceLeftInSpool);
-            }
             pointer = readLines(state, spaceLeftInSpool);
             recordsRead = records.size() - eventListSizeBefore;
-            if (logger.isTraceEnabled()) {
-                logger.trace("  Pointer after reading : " + pointer);
-                logger.trace("  Records read : " + recordsRead);
-            }
+            logger.trace("  Pointer after reading : {}", pointer);
+            logger.trace("  Records read : {}", recordsRead);
         }
         pointerMap.put(state, pointer);
         return recordsRead; // Return number of events read
@@ -147,9 +136,7 @@ public class ParserFileReader {
             }
             catch (Throwable ex) {
                 ex.printStackTrace(System.err);
-                if (logger.isTraceEnabled()) {
-                    logger.trace("  Error during reading file : " + ex.getMessage());
-                }
+                logger.trace("  Error during reading file : {}", ex.getMessage());
             }
             bytesRead = parser.getFilePos();
         }

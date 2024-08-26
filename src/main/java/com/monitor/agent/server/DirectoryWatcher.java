@@ -37,7 +37,8 @@ import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.io.monitor.FileAlterationListener;
 import org.apache.commons.io.monitor.FileAlterationObserver;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Задача отслеживателя каталогов - во-первых, определить список каталогов, удовлетворяющих
@@ -51,7 +52,7 @@ import org.apache.log4j.Logger;
  */
 public class DirectoryWatcher {
     
-    private static final Logger logger = Logger.getLogger(DirectoryWatcher.class);
+    private static final Logger logger = LoggerFactory.getLogger(DirectoryWatcher.class);
     
     private final Map<DirectoryChangeListener, Set<File>> directories;
     private final Map<File, FileAlterationObserver> observersMap;
@@ -461,7 +462,7 @@ public class DirectoryWatcher {
     
     void onDirectoryCreate(File directory, DirectoryChangeListener listener) {
         try {
-            logger.debug("Create detected on directory : " + directory.getCanonicalPath());
+            logger.debug("Create detected on directory : {}", directory.getCanonicalPath());
             List<String> scans = getScanParts(listener.getWildCard());
             if (canMatch(directory, scans)) {
                 getCreateObserver(directory, listener);
@@ -481,14 +482,14 @@ public class DirectoryWatcher {
             }
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onDirectoryCreate : " + e.getMessage());
+            logger.error("Caught IOException in onDirectoryCreate : {}", e.getMessage());
         }
     }
 
     
     void onDirectoryChange(File directory, DirectoryChangeListener listener) {
         try {
-            logger.debug("Change detected on directory : " + directory.getCanonicalPath());
+            logger.debug("Change detected on directory : {}", directory.getCanonicalPath());
             List<String> scans = getScanParts(listener.getWildCard());
             if (canMatch(directory, scans)) {
                 getCreateObserver(directory, listener);
@@ -511,14 +512,14 @@ public class DirectoryWatcher {
             }
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onDirectoryChange : " + e.getMessage());
+            logger.error("Caught IOException in onDirectoryChange : {}", e.getMessage());
         }
     }
 
     
     void onDirectoryDelete(File directory, DirectoryChangeListener listener) {
         try {
-            logger.debug("Deletion detected on directory : " + directory.getCanonicalPath());
+            logger.debug("Deletion detected on directory : {}", directory.getCanonicalPath());
             Set<File> listenerDirectories = getCreateListenerDirectories(listener);
             listenerDirectories.remove(directory);
             deleteObserver(directory, listener);
@@ -530,7 +531,7 @@ public class DirectoryWatcher {
             }
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onDirectoryDelete : " + e.getMessage());
+            logger.error("Caught IOException in onDirectoryDelete : {}", e.getMessage());
         }
     }
     

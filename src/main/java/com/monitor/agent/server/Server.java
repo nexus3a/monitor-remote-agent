@@ -21,6 +21,7 @@ package com.monitor.agent.server;
  *
 */
 
+import ch.qos.logback.classic.Level;
 import com.monitor.agent.server.handler.RootHandler;
 import com.monitor.agent.server.handler.LogRecordsHandler;
 import com.monitor.agent.server.handler.NotFoundHandler;
@@ -30,7 +31,6 @@ import com.monitor.agent.server.handler.ConfigHandler;
 import com.monitor.agent.server.handler.WatchMapHandler;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
-import static org.apache.log4j.Level.*;
 
 import java.io.IOException;
 
@@ -39,7 +39,6 @@ import com.monitor.agent.server.config.FilesConfig;
 import com.monitor.agent.server.config.OneCServerConfig;
 import com.monitor.agent.server.handler.AccessibilityHandler;
 import com.monitor.agent.server.handler.ContinueServerHandler;
-import com.monitor.agent.server.handler.DefaultResponder;
 import com.monitor.agent.server.handler.ExecQueryHandler;
 import com.monitor.agent.server.handler.TJLogConfigHandler;
 import com.monitor.agent.server.handler.OneCSessionsInfoHandler;
@@ -56,7 +55,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -72,23 +70,15 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
-import org.apache.log4j.Appender;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Layout;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
-import org.apache.log4j.RollingFileAppender;
-import org.apache.log4j.spi.RootLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Server {
 
-    private static final Logger logger = Logger.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.7.21";
+    private static final Logger logger = LoggerFactory.getLogger(Server.class);
+    private static final String AGENT_VERSION = "2.8.0";
     private static final String SINCEDB = ".monitor-remote-agent";
     private static final String SINCEDB_CAT = "sincedb";
-    private static Level logLevel = INFO;
 
     private RouterNanoHTTPD httpd;
     private ThreadPoolExecutor executor;
@@ -100,13 +90,10 @@ public class Server {
     private int signatureLength = 4096;
     private boolean tailSelected = false;
     private String sincedbFile = SINCEDB;
-    private boolean debugWatcherSelected = false;
     private String stopRoute = "/shutdown";
     private boolean stopServer = false;
 
-    private String logfile = null;
-    private String logfileSize = "10MB";
-    private int logfileNumber = 5;
+    private final ServerLog serverLog;
     
     private final Semaphore pauseLock = new Semaphore(1);
     private final HashMap<Section, FileWatcher> watchers = new HashMap<>();
@@ -125,12 +112,11 @@ public class Server {
     public static void main(String[] args) {
         try {
             Server server = new Server();
-            server.parseOptions(args);
+            server.setup(args);
             if (server.stopServer) {
                 server.sendStop();
                 return;
             }
-            server.setupLogging();
             server.initializeFileWatchers();
             server.startServer();
         }
@@ -141,6 +127,7 @@ public class Server {
     }
     
     public Server() {
+        this.serverLog = new ServerLog();
     }
     
     private void startServer() throws IOException {
@@ -233,14 +220,31 @@ public class Server {
         httpClient.disconnect();
     }
     
+    private void setup(String[] args) {
+        try {
+            parseOptions(args);
+            serverLog.setup();
+        }
+        catch (IOException e) {
+            System.err.println("Log setup exception: " + e.getLocalizedMessage());
+            System.exit(1);
+        }
+        catch (ParseException e) {
+            System.exit(1);
+        }
+        catch (NumberFormatException e) {
+            System.exit(2);
+        }
+    }
+    
     @SuppressWarnings("static-access")
-    private void parseOptions(String[] args) {
+    private void parseOptions(String[] args) throws ParseException, NumberFormatException {
         System.out.println(Arrays.toString(args));
         Option helpOption = new Option("help", "print this message");
         Option quietOption = new Option("quiet", "operate in quiet mode - only emit errors to log");
         Option debugOption = new Option("debug", "operate in debug mode");
-        Option debugWatcherOption = new Option("debugwatcher", "operate watcher in debug mode");
         Option traceOption = new Option("trace", "operate in trace mode");
+        Option debugWatcherOption = new Option("debugwatcher", "operate watcher in debug mode");
         Option tailOption = new Option("tail", "read new files from the end");
         Option stopServerOption = new Option("stop", "signal to stop server, see also -stoproute");
 
@@ -360,28 +364,28 @@ public class Server {
                 signatureLength = Integer.parseInt(cmdLine.getOptionValue(signatureLengthOption));
             }
             if (cmdLine.hasOption(quietOption)) {
-                logLevel = ERROR;
+                serverLog.setLevel(Level.ERROR);
             }
             if (cmdLine.hasOption(debugOption)) {
-                logLevel = DEBUG;
+                serverLog.setLevel(Level.DEBUG);
             }
             if (cmdLine.hasOption(traceOption)) {
-                logLevel = TRACE;
+                serverLog.setLevel(Level.TRACE);
             }
             if (cmdLine.hasOption(debugWatcherOption)) {
-                debugWatcherSelected = true;
+                serverLog.setDebugWatchers(true);
             }
             if (cmdLine.hasOption(tailOption)) {
                 tailSelected = true;
             }
             if (cmdLine.hasOption(logfileOption)) {
-                logfile = cmdLine.getOptionValue(logfileOption);
+                serverLog.setLogfile(cmdLine.getOptionValue(logfileOption));
             }
             if (cmdLine.hasOption(logfileSizeOption)) {
-                logfileSize = cmdLine.getOptionValue(logfileSizeOption);
+                serverLog.setLogfileSize(cmdLine.getOptionValue(logfileSizeOption));
             }
             if (cmdLine.hasOption(logfileNumberOption)) {
-                logfileNumber = Integer.parseInt(cmdLine.getOptionValue(logfileNumberOption));
+                serverLog.setLogfileNumber(Integer.parseInt(cmdLine.getOptionValue(logfileNumberOption)));
             }
             if (cmdLine.hasOption(sincedbOption)) {
                 sincedbFile = cmdLine.getOptionValue(sincedbOption);
@@ -393,12 +397,12 @@ public class Server {
         catch (ParseException e) {
             System.err.println("General options exception: " + e.getLocalizedMessage());
             printHelp(helpOptions);
-            System.exit(1);
+            throw e;
         }
         catch (NumberFormatException e) {
             System.err.println("Value must be an integer");
             printHelp(helpOptions);
-            System.exit(2);
+            throw e;
         }
     }
 
@@ -407,86 +411,6 @@ public class Server {
         formatter.printHelp("monitor-agent", options);
     }
     
-    private Appender findConsoleAppender(Enumeration appenders) {
-        Appender appender = null;
-        while (appenders.hasMoreElements()) {
-            Object element = appenders.nextElement();
-            if (element instanceof ConsoleAppender) {
-                appender = (Appender) element;
-                break;
-            }
-        }
-        return appender;
-    }
-
-    private Appender findRollingFileAppender(String logFileName, Enumeration appenders) {
-        Appender appender = null;
-        String normFileName = logFileName.replaceAll("\\\\","/");
-        while (appenders.hasMoreElements()) {
-            Object element = appenders.nextElement();
-            if (element instanceof RollingFileAppender 
-                    && ((RollingFileAppender) element).getFile().replaceAll("\\\\","/").equalsIgnoreCase(normFileName)) {
-                appender = (Appender) element;
-                break;
-            }
-        }
-        return appender;
-    }
-
-    private Appender createRollingFileAppender(String logFileName, Layout layout, String maxSize, int maxIndex) 
-            throws IOException {
-        RollingFileAppender appender = new RollingFileAppender(layout, logFileName, true);
-        appender.setMaxFileSize(maxSize);
-        appender.setMaxBackupIndex(maxIndex);
-        return appender;
-    }
-
-    private void setupLogging() throws IOException {
-        Appender appender;
-        Layout layout = new PatternLayout("%d %p %c{1} - %m%n");
-        if (logfile == null) {
-            logfile = "logs/process/process.log";
-        }
-        if (logfile == null) {
-            appender = findConsoleAppender(RootLogger.getRootLogger().getAllAppenders());
-            if (appender == null) {
-                appender = new ConsoleAppender(layout);
-            }
-        }
-        else {
-            appender = findRollingFileAppender(logfile, RootLogger.getRootLogger().getAllAppenders());
-            if (appender == null) {
-                appender = createRollingFileAppender(logfile, layout, logfileSize, logfileNumber);
-            }
-        }
-        BasicConfigurator.configure(appender);
-        RootLogger.getRootLogger().setLevel(logLevel);
-        
-        if (debugWatcherSelected) {
-            Logger l = Logger.getLogger(FileWatcher.class);
-            if (appender instanceof ConsoleAppender && findConsoleAppender(l.getAllAppenders()) == null
-                    || appender instanceof RollingFileAppender && findRollingFileAppender(logfile, l.getAllAppenders()) == null) {
-                l.addAppender(appender);
-                l.setLevel(DEBUG);
-                l.setAdditivity(false);
-            }
-        }
-        
-        // включение логирования запросов к Агенту
-        //
-        Logger l = Logger.getLogger(DefaultResponder.class);
-        String accessLogfile = "logs/access/access.log";
-        if (findRollingFileAppender(accessLogfile, l.getAllAppenders()) == null) {
-            appender = findRollingFileAppender(accessLogfile, RootLogger.getRootLogger().getAllAppenders());
-            if (appender == null) {
-                appender = createRollingFileAppender(accessLogfile, layout, logfileSize, logfileNumber);
-            }
-            l.addAppender(appender);
-            l.setLevel(INFO);
-            l.setAdditivity(false);
-        }
-    }
-
     private void createFileWatchers(List<FilesConfig> configs) throws JsonMappingException, UnsupportedEncodingException, IOException {
         if (configs == null) {
             return;

@@ -41,11 +41,12 @@ import org.apache.commons.io.filefilter.FileFilterUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
 import org.apache.commons.io.monitor.FileAlterationObserver;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class FileWatcher {
 
-    private static final Logger logger = Logger.getLogger(FileWatcher.class);
+    private static final Logger logger = LoggerFactory.getLogger(FileWatcher.class);
     public static final int ONE_DAY = 24 * 3600 * 1000;
     
     private final List<FileAlterationObserver> observerList = new ArrayList<>();
@@ -73,11 +74,11 @@ public class FileWatcher {
             // коллекция файлов, которая была загружена из sinceDB с состояниями отслеживаемых файлов
             for (FileState state : savedStates) {
                 if (newWatched.contains(state.getFile())) { // оставляем только актуальные записи
-                    logger.info("    Loading file state: " + state.getFile() + ": pointer = " + state.getPointer());
+                    logger.info("    Loading file state: {}: pointer = {}", state.getFile(), state.getPointer());
                     curWatchMap.put(state.getFile(), state); // обновляем состояние [указателей] в файлах
                 }
                 else {
-                    logger.info("    Dropping file state: " + state.getFile() + " - not matches any wildcard");
+                    logger.info("    Dropping file state: {} - not matches any wildcard", state.getFile());
                 }
             }
         }
@@ -105,7 +106,7 @@ public class FileWatcher {
     
     private boolean sameState(FileState newState, FileState oldState) throws IOException {
         if (logger.isTraceEnabled() && !newState.getFile().equals(oldState.getFile())) {
-            logger.trace("Compare to " + oldState.getFile());
+            logger.trace("Compare to {}", oldState.getFile());
         }
         if (oldState.getSize() > newState.getSize()) {
             logger.trace("File is shorter : file can't be the same");
@@ -140,15 +141,13 @@ public class FileWatcher {
         for (File file : newWatchMap.keySet()) {
 
             FileState state = newWatchMap.get(file);
-            if (logger.isTraceEnabled()) {
-                logger.trace("Checking file : " + file.getCanonicalPath());
-                logger.trace("-- Last modified : " + state.getLastModified());
-                logger.trace("-- Size : " + state.getSize());
-                logger.trace("-- Directory : " + state.getDirectory());
-                logger.trace("-- Filename : " + state.getFileName());
-                logger.trace("-- Pointer : " + state.getPointer());
-                logger.trace("-- New pointer : " + state.getNewPointer());
-            }
+            logger.trace("Checking file : {}", file.getCanonicalPath());
+            logger.trace("-- Last modified : {}", state.getLastModified());
+            logger.trace("-- Size : {}", state.getSize());
+            logger.trace("-- Directory : {}", state.getDirectory());
+            logger.trace("-- Filename : {}", state.getFileName());
+            logger.trace("-- Pointer : {}", state.getPointer());
+            logger.trace("-- New pointer : {}", state.getNewPointer());
 
             // A -> A(time, size+) +
             // A -> A(time, size-)        rename?
@@ -209,38 +208,28 @@ public class FileWatcher {
         }
 
         for (FileState state : newWatchMap.values()) {
-            if (logger.isTraceEnabled()) {
-                logger.trace("Refreshing file state: " + state.getFile());
-            }
+            logger.trace("Refreshing file state: {}", state.getFile());
             FileState oldState = state.getOldFileState();
             if (oldState == null) {
                 oldState = curWatchMap.get(state.getFile());
                 if (oldState == null) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("File " + state.getFile() + " has been created; not retrieving pointer");
-                    }
+                    logger.debug("File {} has been created; not retrieving pointer", state.getFile());
                 }
             //  else if (oldState.isMatchedToNewFile()) {
-            //      if (logger.isDebugEnabled()) {
-            //          logger.debug("File " + state.getFile() + " has been truncated or created; not retrieving pointer");
-            //      }
+            //      logger.debug("File {} has been truncated or created; not retrieving pointer", state.getFile());
             //  }
                 else {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("File " + state.getFile() + " has been replaced and not renamed; not retrieving pointer");
-                    }
+                    logger.debug("File {} has been replaced and not renamed; not retrieving pointer", state.getFile());
                     oldState.closeRandomAccessFile(); 
             //      curWatchMap.remove(state.getFile());
                 }
             }
             else {
                 if (state.getFileName().equals(oldState.getFileName())) {
-                    if (logger.isDebugEnabled()) {
-                        logger.debug("New data was added into the file " + state.getFile() + "; keep pointer");
-                    }
+                    logger.debug("New data was added into the file {}; keep pointer", state.getFile());
                 }
-                else if (logger.isInfoEnabled() && (state.getFile().length() > 3 || oldState.getFile().length() > 3)) { // 3 == BOM.length
-                    logger.info("File rename was detected: " + oldState.getFile() + " -> " + state.getFile() + "; keep pointer");
+                else if (state.getFile().length() > 3 || oldState.getFile().length() > 3) { // 3 == BOM.length
+                    logger.info("File rename was detected: {} -> {}; keep pointer", oldState.getFile(), state.getFile());
                 }
                 state.setPointer(oldState.getPointer());
                 state.setNewPointer(oldState.getNewPointer());
@@ -286,7 +275,7 @@ public class FileWatcher {
                 state.closeRandomAccessFile();
                 curWatchMap.remove(state.getFile());
                 if (logger.isDebugEnabled() && !state.isMatchedToNewFile()) {
-                    logger.debug("File " + state.getFile() + " removed from watchMap");
+                    logger.debug("File {} removed from watchMap", state.getFile());
                 }
             }
         }
@@ -307,7 +296,7 @@ public class FileWatcher {
     }
     
     private void addSingleFile(String fileToWatch, PredefinedFields fields, long deadTime, Filter filter, String encoding) throws Exception {
-        logger.info("Watching file : " + new File(fileToWatch).getCanonicalPath());
+        logger.info("Watching file : {}", new File(fileToWatch).getCanonicalPath());
         String directory = FilenameUtils.getFullPath(fileToWatch);
         String fileName = FilenameUtils.getName(fileToWatch);
         IOFileFilter fileFilter = FileFilterUtils.and(
@@ -318,7 +307,7 @@ public class FileWatcher {
     }
     
     private void addWildCardFiles(String filesToWatch, PredefinedFields fields, long deadTime, Filter filter, String encoding) throws Exception {
-        logger.info("Watching wildcard files : " + filesToWatch);
+        logger.info("Watching wildcard files : {}", filesToWatch);
         String pathWildcard = FilenameUtils.getFullPath(filesToWatch);
         String nameWildcard = FilenameUtils.getName(filesToWatch);
         IOFileFilter fileFilter = FileFilterUtils.and(
@@ -329,7 +318,7 @@ public class FileWatcher {
         Set<File> directories = directoryWatcher.addWildCardDirectories(pathWildcard, fileFilter, fields, filter, encoding);
         if (directories != null) {
             for (File directory : directories) {
-                logger.trace("Directory : " + directory.getCanonicalPath() + ", wildcard : " + nameWildcard);
+                logger.trace("Directory : {}, wildcard : {}", directory.getCanonicalPath(), nameWildcard);
                 initializeWatchMap(directory, fileFilter, fields, filter, encoding);
             }
         }
@@ -337,7 +326,7 @@ public class FileWatcher {
     
     private void initializeWatchMap(File directory, IOFileFilter fileFilter, PredefinedFields fields, Filter filter, String encoding) throws Exception {
         if (!directory.isDirectory() && directory.exists()) {
-            logger.warn("Directory " + directory + " does not exist");
+            logger.warn("Directory {} does not exist", directory);
             return;
         }
         FileAlterationObserver observer = new FileAlterationObserver(directory, fileFilter);
@@ -364,90 +353,84 @@ public class FileWatcher {
             state.setSignatureLength(signatureLength);
             long signature = FileSigner.computeSignature(state, signatureLength);
             state.setSignature(signature);
-            logger.trace("Setting signature of size : " + signatureLength + " on file : " + file + " : " + signature);
+            logger.trace("Setting signature of size : {} on file : {} : " + signature, signatureLength, file);
             newWatchMap.put(file, state); // will use in processModifications()
         }
         catch (Exception e) {
-            logger.error("Caught IOException in addFileToWatchMap : "
-                    + e.getMessage());
+            logger.error("Caught IOException in addFileToWatchMap : {}", e.getMessage());
         }
     }
     
     public void onFileChange(File file, PredefinedFields fields, Filter filter, String encoding) {
         try {
-            logger.debug("Change detected on file : " + file.getCanonicalPath());
+            logger.debug("Change detected on file : {}", file.getCanonicalPath());
             addFileToNewWatchMap(file, fields, filter, encoding);
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onFileChange : "
-                    + e.getMessage());
+            logger.error("Caught IOException in onFileChange : {}", e.getMessage());
         }
     }
     
     public void onFileCreate(File file, PredefinedFields fields, Filter filter, String encoding) {
         try {
-            logger.debug("Create detected on file : " + file.getCanonicalPath());
+            logger.debug("Create detected on file : {}", file.getCanonicalPath());
             addFileToNewWatchMap(file, fields, filter, encoding);
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onFileCreate : "
-                    + e.getMessage());
+            logger.error("Caught IOException in onFileCreate : {}", e.getMessage());
         }
     }
     
     public void onFileDelete(File file) {
         try {
-            logger.debug("Delete detected on file : " + file.getCanonicalPath());
+            logger.debug("Delete detected on file : {}", file.getCanonicalPath());
             FileState state = curWatchMap.get(file);
             if (state != null) {
                 state.setDeleted();
             }
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onFileDelete: "
-                    + e.getMessage());
+            logger.error("Caught IOException in onFileDelete: {}", e.getMessage());
         }
     }
     
     void onDirectoryCreate(File directory, IOFileFilter fileFilter, PredefinedFields fields, Filter filter, String encoding) {
         try {
-            logger.trace("Directory created : " + directory.getCanonicalPath() + "; files will be watched");
+            logger.trace("Directory created : {}; files will be watched", directory.getCanonicalPath());
             initializeWatchMap(directory, fileFilter, fields, filter, encoding);
         }
         catch (Exception e) {
-            logger.error("Caught Exception in onDirectoryCreate: "
-                    + e.getMessage());
+            logger.error("Caught Exception in onDirectoryCreate: {}", e.getMessage());
         }
     }
     
     void onDirectoryChange(File directory, IOFileFilter fileFilter, PredefinedFields fields, Filter filter, String encoding) {
         try {
-            logger.trace("Directory changed : " + directory.getCanonicalPath() + "; files will be watched");
+            logger.trace("Directory changed : {}; files will be watched", directory.getCanonicalPath());
             initializeWatchMap(directory, fileFilter, fields, filter, encoding);
         }
         catch (Exception e) {
-            logger.error("Caught Exception in onDirectoryChange: "
-                    + e.getMessage());
+            logger.error("Caught Exception in onDirectoryChange: {}", e.getMessage());
         }
     }
     
     void onDirectoryDelete(File directory, IOFileFilter fileFilter, PredefinedFields fields, Filter filter) {
         try {
-            logger.trace("Directory deleted : " + directory.getCanonicalPath() + "; can't do anything");
+            logger.trace("Directory deleted : {}; can't do anything", directory.getCanonicalPath());
         }
         catch (IOException e) {
-            logger.error("Caught IOException in onDirectoryDelete: "
-                    + e.getMessage());
+            logger.error("Caught IOException in onDirectoryDelete: {}", e.getMessage());
         }
     }
 
     private void printWatchMap() throws IOException {
-        if (logger.isTraceEnabled()) {
-            logger.trace("WatchMap contents :");
-            for (File file : curWatchMap.keySet()) {
-                FileState state = curWatchMap.get(file);
-                logger.trace("\tFile : " + file.getCanonicalPath() + "; marked for deletion : " + state.isDeleted());
-            }
+        if (!logger.isTraceEnabled()) {
+            return;
+        }
+        logger.trace("WatchMap contents :");
+        for (File file : curWatchMap.keySet()) {
+            FileState state = curWatchMap.get(file);
+            logger.trace("\tFile : {}; marked for deletion : {}", file.getCanonicalPath(), state.isDeleted());
         }
     }
     
@@ -487,7 +470,7 @@ public class FileWatcher {
             savedStates = Registrar.readStateFromJson(sincedbFile);
         }
         catch (Exception e) {
-            logger.warn("Could not load saved states : " + e.getMessage()); // was (..., e)
+            logger.warn("Could not load saved states : {}", e.getMessage()); // was (..., e)
         }
     }
     

@@ -27,11 +27,12 @@ import fi.iki.elonen.router.RouterNanoHTTPD.UriResponder;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public abstract class DefaultResponder implements UriResponder {
     
-    private static final Logger logger = Logger.getLogger(DefaultResponder.class);
+    private static final Logger logger = LoggerFactory.getLogger(DefaultResponder.class);
 
     private Status status;
     private String message;
@@ -99,10 +100,10 @@ public abstract class DefaultResponder implements UriResponder {
             section = "";
         }
         String uri = session.getUri();
-        logger.info(String.format("%s %s%s", 
+        logger.info("{} {}{}", 
                 session.getMethod().name(),
                 uri.isEmpty() ? "/" : uri,
-                section.isEmpty() ? "" : "?section=" + section));
+                section.isEmpty() ? "" : "?section=" + section);
     }
 
     @Override
