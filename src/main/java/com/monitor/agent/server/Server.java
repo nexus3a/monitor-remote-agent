@@ -40,6 +40,7 @@ import com.monitor.agent.server.config.OneCServerConfig;
 import com.monitor.agent.server.handler.AccessibilityHandler;
 import com.monitor.agent.server.handler.ContinueServerHandler;
 import com.monitor.agent.server.handler.ExecQueryHandler;
+import com.monitor.agent.server.handler.OSProcessInfoHandler;
 import com.monitor.agent.server.handler.TJLogConfigHandler;
 import com.monitor.agent.server.handler.OneCSessionsInfoHandler;
 import com.monitor.agent.server.handler.PauseServerHandler;
@@ -52,6 +53,9 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -62,6 +66,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLServerSocketFactory;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -76,9 +82,11 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.8.0";
+    private static final String AGENT_VERSION = "2.8.3";
     private static final String SINCEDB = ".monitor-remote-agent";
     private static final String SINCEDB_CAT = "sincedb";
+    public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
+    public  static final String SERVER_JKS_PASSWORD = "monitor";
 
     private RouterNanoHTTPD httpd;
     private ThreadPoolExecutor executor;
@@ -92,6 +100,7 @@ public class Server {
     private String sincedbFile = SINCEDB;
     private String stopRoute = "/shutdown";
     private boolean stopServer = false;
+    private boolean secure = false;
 
     private final ServerLog serverLog;
     
@@ -130,7 +139,7 @@ public class Server {
         this.serverLog = new ServerLog();
     }
     
-    private void startServer() throws IOException {
+    private void startServer() throws IOException, Exception {
         new File(SINCEDB_CAT).mkdir();
         
         httpd = new RouterNanoHTTPD(port);
@@ -148,10 +157,15 @@ public class Server {
         httpd.addRoute("/sessionsinfo", OneCSessionsInfoHandler.class, this);
         httpd.addRoute("/tjlogconfig", TJLogConfigHandler.class, this);
         httpd.addRoute("/execquery", ExecQueryHandler.class, this);
+        httpd.addRoute("/osprocinfo", OSProcessInfoHandler.class, this);
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
 
         logger.info("server start");
+        secure = Files.exists(Paths.get(SERVER_JKS_NAME));
+        if (secure) {
+            httpd.makeSecure(getSslServerSocketFactory("monitor-remote-agent.jks", "monitor"), null);
+        }
         httpd.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         executor = (ThreadPoolExecutor) Executors.newCachedThreadPool();
         logger.info("server started");
@@ -245,6 +259,7 @@ public class Server {
         Option debugOption = new Option("debug", "operate in debug mode");
         Option traceOption = new Option("trace", "operate in trace mode");
         Option debugWatcherOption = new Option("debugwatcher", "operate watcher in debug mode");
+    //  Option secureOption = new Option("secure", "operate over https protocol");
         Option tailOption = new Option("tail", "read new files from the end");
         Option stopServerOption = new Option("stop", "signal to stop server, see also -stoproute");
 
@@ -291,6 +306,7 @@ public class Server {
                 .addOption(quietOption)
                 .addOption(debugOption)
                 .addOption(debugWatcherOption)
+    //          .addOption(secureOption)
                 .addOption(traceOption)
                 .addOption(tailOption)
                 .addOption(portOption)
@@ -313,6 +329,7 @@ public class Server {
                 .addOption(quietOption)
                 .addOption(debugOption)
                 .addOption(debugWatcherOption)
+    //          .addOption(secureOption)
                 .addOption(traceOption)
                 .addOption(tailOption)
                 .addOption(portOption)
@@ -393,6 +410,9 @@ public class Server {
             if (cmdLine.hasOption(stopRouteOption)) {
                 stopRoute = cmdLine.getOptionValue(stopRouteOption);
             }
+    //      if (cmdLine.hasOption(secureOption)) {
+    //          secure = true;
+    //      }
         }
         catch (ParseException e) {
             System.err.println("General options exception: " + e.getLocalizedMessage());
@@ -508,6 +528,14 @@ public class Server {
     
     public ThreadPoolExecutor getExecutor() {
         return executor;
+    }
+    
+    private SSLServerSocketFactory getSslServerSocketFactory (String keystoreFileName, String password) throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        keyStore.load(Files.newInputStream(Paths.get(keystoreFileName)), password.toCharArray());
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, password.toCharArray());
+        return NanoHTTPD.makeSSLSocketFactory(keyStore, kmf.getKeyManagers());
     }
     
 }
