@@ -82,7 +82,7 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.8.4";
+    private static final String AGENT_VERSION = "2.8.5";
     private static final String SINCEDB = ".monitor-remote-agent";
     private static final String SINCEDB_CAT = "sincedb";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
