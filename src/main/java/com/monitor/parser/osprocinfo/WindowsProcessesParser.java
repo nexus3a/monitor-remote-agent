@@ -99,7 +99,7 @@ public class WindowsProcessesParser implements ConsoleParser {
 
     @Override
     public List<ProcessInfo> parse() throws IOException, InterruptedException {
-        getPslistRawData();
+        getWmicRawData();
         bindNetwork();
         findParentPids();
         deleteRphostNetwork();
@@ -128,13 +128,12 @@ public class WindowsProcessesParser implements ConsoleParser {
         }
         tasklistProcess.waitFor();
     }
-    */
     
     private void getPslistRawData() throws IOException, InterruptedException {
         
         Process pslistProcess = Runtime.getRuntime().exec(String.format(
-                "cmd.exe /c utils\\pslist.exe -t | findstr \"%s %s %s\"",
-                RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME));
+                "cmd.exe /c %s\%s -t | findstr \"%s %s %s\"",
+                UTILS_DIR_NAME, PSLIST_EXE_NAME, RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME));
         
         ArrayList<String[]> parentPids = new ArrayList<>(); // { shift, pid, parentPid }
         
@@ -152,18 +151,27 @@ public class WindowsProcessesParser implements ConsoleParser {
                 String shift = tasklistRecord.substring(0, tasklistRecord.indexOf(name));
                 int shiftLength = shift.length();
                 
-                int topShiftLength = parentPids.isEmpty() ? -1 : parentPids.getLast()[0].length(); // [0] == .shift
+                int topShiftLength = 
+                        parentPids.isEmpty() 
+                        ? -1 
+                        : parentPids.get(parentPids.size() - 1)[0].length(); // .getLast(); [0] == .shift
                 while (topShiftLength > shiftLength) {
-                    parentPids.removeLast();
-                    topShiftLength = parentPids.isEmpty() ? -1 : parentPids.getLast()[0].length(); // [0] == .shift
+                    parentPids.remove(parentPids.size() - 1); // .removeLast()
+                    topShiftLength = 
+                            parentPids.isEmpty() 
+                            ? -1 
+                            : parentPids.get(parentPids.size() - 1)[0].length(); // .getLast(); [0] == .shift
                 }
 
                 if (topShiftLength < shiftLength) {
-                    parentPid = parentPids.isEmpty() ? null : parentPids.getLast()[1]; // [1] == .pid
+                    parentPid = 
+                            parentPids.isEmpty() 
+                            ? null 
+                            : parentPids.get(parentPids.size() - 1)[1]; // .getLast(); [1] == .pid
                     parentPids.add(new String[] { shift, pid, parentPid });
                 }
                 else { // topShiftLength == shiftLength
-                    String[] lastRecord = parentPids.getLast();
+                    String[] lastRecord = parentPids.get(parentPids.size() - 1); // .getLast()
                     lastRecord[1] = pid; // [1] == .pid
                     parentPid = lastRecord[2]; // [2] == .parentPid
                 }
@@ -172,6 +180,38 @@ public class WindowsProcessesParser implements ConsoleParser {
             }
         }
         pslistProcess.waitFor();
+        
+        // заглушка; привязка rphost будет делаться по netstat
+        //
+        for (ProcessInfo procInfo : processes) {
+            if (RPHOST_PROC_NAME.equals(procInfo.name)) {
+                procInfo.parentPid = null; 
+            }
+        }
+    }
+    */
+
+    private void getWmicRawData() throws IOException, InterruptedException {
+        
+        Process wmicProcess = Runtime.getRuntime().exec(String.format(
+                "cmd /c wmic process where \"name='%s.exe' or name='%s.exe' or name='%s.exe'\" get Caption,ParentProcessId,ProcessId"
+                        + " | findstr \"%s %s %s\"",
+                RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME,
+                RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME));
+        
+        try (BufferedReader wmicReader = new BufferedReader(new InputStreamReader(wmicProcess.getInputStream()))) {
+            String wmicRecord;
+            while ((wmicRecord = wmicReader.readLine()) != null) {
+                String[] parts = wmicRecord.trim().split("\\s+");
+                if (parts.length > 2) {
+                    String name = parts[0].substring(0, parts[0].lastIndexOf("."));
+                    String parentPid = parts[1];
+                    String pid = parts[2];
+                    processes.add(new ProcessInfo(name, pid, parentPid));
+                }
+            }
+        }
+        wmicProcess.waitFor();
         
         // заглушка; привязка rphost будет делаться по netstat
         //
@@ -220,69 +260,37 @@ public class WindowsProcessesParser implements ConsoleParser {
 
                 String pid = partsNetstat[4];
                 NetworkInfo networkInfo = new NetworkInfo(localAddress, localPort, externalAddress, externalPort);
-                procMap.get(pid).addNetworkInfo(networkInfo);
+                ProcessInfo procInfo = procMap.get(pid);
+                if (procInfo != null) {
+                    procInfo.addNetworkInfo(networkInfo);
+                }
             }
         }
         netstatProcess.waitFor();
     }
 
     private void findParentPids() {
-        List<String> portList = new ArrayList<>();
-
         for (ProcessInfo local : processes) {
-            if (!RMNGR_PROC_NAME.equals(local.getName())) {
+            if (RPHOST_PROC_NAME.equals(local.name)) {
                 continue;
             }
-            String port = local.getNetwork().get(0).getLocalPort();
-            portList.add(port);
-            
-            if (local.getParentPid() != null) {
-                continue;
-            }
-
-            for (ProcessInfo external : processes) {
-                if (!RAGENT_PROC_NAME.equals(external.getName())) {
-                    continue;
-                }
-                boolean isPort = false;
-                for (int i = 0; i <= external.getNetwork().size() - 1; i++) {
-                    if (external.getNetwork().get(i).getExternalPort().equals(port)) {
-                        isPort = true;
-                        local.setParentPid(external.getPid());
-                        break;
+            for (NetworkInfo localNetwork : local.getNetwork()) {
+                for (ProcessInfo external : processes) {
+                    if (external == local || external.parentPid != null) {
+                        continue;
                     }
-                }
-
-                if (isPort) {
-                    break;
-                }
-            }
-        }
-
-        for (ProcessInfo local : processes) {
-            if (!RPHOST_PROC_NAME.equals(local.getName()) || local.getParentPid() != null) {
-                continue;
-            }
-            String regPort = "";
-            boolean isRegPort = false;
-            for (int i = 0; i <= local.getNetwork().size() - 1; i++) {
-                for (String port : portList) {
-                    if (local.getNetwork().get(i).getExternalPort().equals(port)) {
-                        isRegPort = true;
-                        regPort = port;
-                        break;
+                    if (RAGENT_PROC_NAME.equals(local.name) && !RMNGR_PROC_NAME.equals(external.name)) {
+                        continue;
                     }
-                }
-
-                if (isRegPort) {
-                    break;
-                }
-            }
-
-            for (ProcessInfo external : processes) {
-                if (RMNGR_PROC_NAME.equals(external.getName())) {
-                    if (regPort.equals(external.getNetwork().get(0).getLocalPort())) {
-                        local.setParentPid(external.getPid());
+                    if (RMNGR_PROC_NAME.equals(local.name) && !RPHOST_PROC_NAME.equals(external.name)) {
+                        continue;
+                    }
+                    for (NetworkInfo externalNetwork : external.getNetwork()) {
+                        if (localNetwork.externalIp.equals(externalNetwork.localIp)
+                                && localNetwork.externalPort.equals(externalNetwork.localPort)) {
+                            external.parentPid = local.pid;
+                            break;
+                        }
                     }
                 }
             }
@@ -317,4 +325,5 @@ public class WindowsProcessesParser implements ConsoleParser {
         processes.clear();
         processes.addAll(rootProcesses);
     }
+    
 }

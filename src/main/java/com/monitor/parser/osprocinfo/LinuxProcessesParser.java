@@ -149,12 +149,12 @@ public class LinuxProcessesParser implements ConsoleParser {
     }
 
     private void findParentPids() {
-        for (ProcessInfo process : processes) {
-            if (process.getName().equals("rphost")) {
-                for (ProcessInfo bufProcess : processes) {
-                    if (bufProcess.getName().equals("rmngr")) {
-                        if (process.getRegPort().equals(bufProcess.getPort())) {
-                            process.setParentPid(bufProcess.getPid());
+        for (ProcessInfo rphostProcess : processes) {
+            if (rphostProcess.getName().equals("rphost")) {
+                for (ProcessInfo rmngrProcess : processes) {
+                    if (rmngrProcess.getName().equals("rmngr")) {
+                        if (rphostProcess.getRegPort().equals(rmngrProcess.getPort())) {
+                            rphostProcess.setParentPid(rmngrProcess.getPid());
                         }
                     }
                 }
