@@ -22,32 +22,17 @@ package com.monitor.agent.server;
 */
 
 import ch.qos.logback.classic.Level;
-import com.monitor.agent.server.handler.RootHandler;
-import com.monitor.agent.server.handler.LogRecordsHandler;
-import com.monitor.agent.server.handler.NotFoundHandler;
-import com.monitor.agent.server.handler.AckHandler;
 import com.fasterxml.jackson.databind.JsonMappingException;
-import com.monitor.agent.server.handler.ConfigHandler;
-import com.monitor.agent.server.handler.WatchMapHandler;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
-
-import java.io.IOException;
 
 import com.monitor.agent.server.config.ConfigurationManager;
 import com.monitor.agent.server.config.FilesConfig;
 import com.monitor.agent.server.config.OneCServerConfig;
-import com.monitor.agent.server.handler.AccessibilityHandler;
-import com.monitor.agent.server.handler.ContinueServerHandler;
-import com.monitor.agent.server.handler.ExecQueryHandler;
-import com.monitor.agent.server.handler.OSProcessInfoHandler;
-import com.monitor.agent.server.handler.TJLogConfigHandler;
-import com.monitor.agent.server.handler.OneCSessionsInfoHandler;
-import com.monitor.agent.server.handler.PauseServerHandler;
-import com.monitor.agent.server.handler.PingHandler;
-import com.monitor.agent.server.handler.StopServerHandler;
-import com.monitor.agent.server.handler.VersionHandler;
+import com.monitor.agent.server.handler.*;
+
 import java.io.File;
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
@@ -82,9 +67,7 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.8.5";
-    private static final String SINCEDB = ".monitor-remote-agent";
-    private static final String SINCEDB_CAT = "sincedb";
+    private static final String AGENT_VERSION = "2.8.8";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
     public  static final String SERVER_JKS_PASSWORD = "monitor";
 
@@ -97,7 +80,7 @@ public class Server {
     private ConfigurationManager configManager;
     private int signatureLength = 4096;
     private boolean tailSelected = false;
-    private String sincedbFile = SINCEDB;
+    private String sincedbFile = TextDB.SINCEDB_EXT;
     private String stopRoute = "/shutdown";
     private boolean stopServer = false;
     private boolean secure = false;
@@ -140,7 +123,7 @@ public class Server {
     }
     
     private void startServer() throws IOException, Exception {
-        new File(SINCEDB_CAT).mkdir();
+        new File(TextDB.SINCEDB_CAT).mkdir();
         
         httpd = new RouterNanoHTTPD(port);
         
@@ -158,6 +141,7 @@ public class Server {
         httpd.addRoute("/tjlogconfig", TJLogConfigHandler.class, this);
         httpd.addRoute("/execquery", ExecQueryHandler.class, this);
         httpd.addRoute("/osprocinfo", OSProcessInfoHandler.class, this);
+        httpd.addRoute("/dumpsinfo", DumpsInfoHandler.class, this);
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
 
@@ -431,7 +415,9 @@ public class Server {
         formatter.printHelp("monitor-agent", options);
     }
     
-    private void createFileWatchers(List<FilesConfig> configs) throws JsonMappingException, UnsupportedEncodingException, IOException {
+    private void createFileWatchers(List<FilesConfig> configs) 
+            throws JsonMappingException, UnsupportedEncodingException, IOException {
+        
         if (configs == null) {
             return;
         }
@@ -444,7 +430,8 @@ public class Server {
                 watcher = new FileWatcher();
                 watcher.setMaxSignatureLength(signatureLength);
                 watcher.setTail(tailSelected);
-                watcher.setSincedb(SINCEDB_CAT + "/" + (section.getName().isEmpty() ? "" : ".") + section.getName() + sincedbFile);
+                watcher.setSincedb(TextDB.SINCEDB_CAT + "/" + (section.getName().isEmpty() ? "" : ".") 
+                        + section.getName() + sincedbFile);
                 watcher.setSection(section);
                 watchers.put(section, watcher);
             }

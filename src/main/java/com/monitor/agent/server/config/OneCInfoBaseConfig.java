@@ -26,6 +26,13 @@ public class OneCInfoBaseConfig {
     @JsonIgnore
     private OneCClusterConfig cluster;
 
+    public OneCInfoBaseConfig() {
+    }
+    
+    public OneCInfoBaseConfig(String name) {
+        this.name = name;
+    }
+    
     public String getName() {
         return name;
     }

@@ -46,6 +46,11 @@ public class OneCClusterConfig {
         administrators.add(new OneCCredentials());
     }
 
+    public OneCClusterConfig(String name) {
+        this();
+        this.name = name;
+    }
+    
     public String getName() {
         return name;
     }

@@ -38,9 +38,13 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class OneCSessionsInfoHandler extends DefaultResponder {
     
+    private static final Logger logger = LoggerFactory.getLogger(OneCSessionsInfoHandler.class);
+
     private Map<String, Object> toMap(ISessionInfo info, String[] props, ObjectMapper mapper) throws JsonProcessingException {
         Map<String, Object> asMap = mapper.readValue(mapper.writeValueAsString(info), HashMap.class);
         if (props == null || props.length == 0) {
@@ -51,6 +55,14 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
             result.put(prop, asMap.get(prop));
         }
         return result;
+    }
+    
+    private void tryConnectAgent(OneCRASAgent agent, String address, int port) throws IllegalStateException {
+        agent.connect(address, port, 1000);
+        if (!agent.isConnected()) {
+            throw new IllegalStateException(String.format(
+                    "Не удалось установить соединение с RAS-сервером %s:%s", address, port));
+        }
     }
 
     @Override
@@ -107,47 +119,92 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
                     continue;
                 }
                 serverFound = true;
-                boolean connected = false;
+                
+                tryConnectAgent(agent, serverConfig.getRasAddress(), serverConfig.getRasPort());
+
                 List<OneCClusterInfo> clustersInfo = new ArrayList<>();
-                for (OneCClusterConfig clusterConfig : serverConfig.getClusters()) {
-                    if (clusterId != null && !clusterId.equals(clusterConfig.getId())) {
-                        continue;
+                
+                // создадим отдельную коллекцию настроек кластеров, содержащую только те кластера,
+                // которые нужно будет возвращать клиенту; в случае, когда не указывается отбор
+                // по кластеру, то мы должны вернуть информацию по всем кластерам, даже если они
+                // не укзанаы в настройках serverConfig
+                //
+                List<OneCClusterConfig> clustersConfigs = new ArrayList<>();
+                if (clusterId == null) {
+                    List<OneCCluster> clusters = agent.getClusters();
+                    for (OneCCluster cluster : clusters) {
+                        boolean configFound = false;
+                        for (OneCClusterConfig clusterConfig : serverConfig.getClusters()) {
+                            if (cluster.getName().equals(clusterConfig.getName())) {
+                                clustersConfigs.add(clusterConfig);
+                                configFound = true;
+                                break;
+                            }
+                        }
+                        if (!configFound) {
+                            clustersConfigs.add(new OneCClusterConfig(cluster.getName()));
+                        }
+                    }
+                }
+                else {
+                    clustersConfigs.add(new OneCClusterConfig(clusterId));
+                    /*
+                    for (OneCClusterConfig clusterConfig : serverConfig.getClusters()) {
+                        if (clusterId.equals(clusterConfig.getId())) {
+                            clustersConfigs.add(clusterConfig);
+                            break;
+                        }
+                    }
+                    */
+                }
+                
+                for (OneCClusterConfig clusterConfig : clustersConfigs) {
+                    OneCCluster cluster = agent.getCluster(clusterConfig.getName());
+                    if (cluster == null) {
+                        throw new IllegalStateException(String.format(
+                                "Не найден кластер %s сервера %s:%s",
+                                clusterConfig.getName(),
+                                serverConfig.getAddress(),
+                                serverConfig.getPort()));
                     }
                     clusterFound = true;
+
+                    // обязательная аутентификация кластера (если не указан администратор кластера,
+                    // то всё равно надо аутентифицироваться с пустым логином/паролем)
+                    //
+                    cluster.setAdministrators(clusterConfig.getAdministrators());
+                    cluster.authenticate();
+
                     List<OneCInfoBaseInfo> infoBasesInfo = new ArrayList<>();
-                    for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBases()) {
-                        if (infoBaseId != null && !infoBaseId.equals(infoBaseConfig.getId())) {
-                            continue;
+                    
+                    // создадим отдельную коллекцию настроек инфобаз, содержащую только те инфобазы,
+                    // которые нужно будет возвращать клиенту; в случае, когда не указывается отбор
+                    // по инфобазе, то мы должны вернуть информацию по всем инфобазам кластера, даже
+                    // если они не укзанаы в настройках clusterConfig
+                    //
+                    List<OneCInfoBaseConfig> infoBasesConfigs = new ArrayList<>();
+                    if (infoBaseId == null) {
+                        List<OneCInfoBase> infoBases = cluster.getInfoBases();
+                        for (OneCInfoBase infoBase : infoBases) {
+                            infoBasesConfigs.add(new OneCInfoBaseConfig(infoBase.getName()));
                         }
-                        infoBaseFound = true;
-
-                        if (!connected) {
-                            agent.connect(serverConfig.getRasAddress(), serverConfig.getRasPort(), 1000);
-                            if (!agent.isConnected()) {
-                                throw new IllegalStateException(String.format(
-                                        "Не удалось установить соединение с RAS-сервером %s:%s",
-                                        serverConfig.getRasAddress(),
-                                        serverConfig.getRasPort()));
+                    }
+                    else {
+                        infoBasesConfigs.add(new OneCInfoBaseConfig(infoBaseId));
+                        /*
+                        for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBases()) {
+                            if (infoBaseId.equals(infoBaseConfig.getId())) {
+                                infoBasesConfigs.add(infoBaseConfig);
+                                break;
                             }
-                            connected = true;
                         }
-
+                        */
+                    }
+                    
+                    for (OneCInfoBaseConfig infoBaseConfig : infoBasesConfigs) {
                         OneCInfoBaseInfo infoBaseInfo = new OneCInfoBaseInfo(infoBaseConfig);
 
-                        OneCCluster cluster = agent.getCluster(clusterConfig.getName());
-                        if (cluster == null) {
-                            throw new IllegalStateException(String.format(
-                                    "Не найден кластер %s сервера %s:%s",
-                                    clusterConfig.getName(),
-                                    serverConfig.getAddress(),
-                                    serverConfig.getPort()));
-                        }
-                        cluster.setAdministrators(clusterConfig.getAdministrators());
                         try {
-                            // обязательная аутентификация кластера (если не указан администратор кластера,
-                            // то всё равно надо аутентифицироваться с пустым логином/паролем)
-                            cluster.authenticate();
-
                             // получение основных данных - информация по каждой сессии текущего кластера
                             OneCInfoBase infoBase = cluster.getInfoBase(infoBaseConfig.getName());
                             if (infoBase == null) {
@@ -158,6 +215,8 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
                                         serverConfig.getAddress(),
                                         serverConfig.getPort()));
                             }
+                            infoBaseFound = true;
+                            
                             List<ISessionInfo> sessions = cluster.getInfoBaseSessions(infoBase);
 
                             List<Map<String, Object>> fsessions = new ArrayList<>();
@@ -227,16 +286,18 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         //  String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(serversInfo);
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.OK,
-                    NanoHTTPD.MIME_PLAINTEXT,
+                    "application/json",
                     json);
         }
         catch (Exception e) {
+            logger.error("Exception while OneCSessionsInfo handling", e);
             try {
                 if (agent.isConnected()) {
                     agent.disconnect();
                 }
             }
             catch (Exception ex) {
+                logger.error("Exception while disconnectiong RAS Agent", ex);
             }
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.INTERNAL_ERROR,

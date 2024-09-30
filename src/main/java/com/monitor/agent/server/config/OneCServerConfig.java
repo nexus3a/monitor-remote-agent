@@ -17,10 +17,12 @@ package com.monitor.agent.server.config;
  *
  */
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.monitor.enterprise.OneCCredentials;
 import java.util.List;
 
+@JsonIgnoreProperties({ "dumps path" })
 public class OneCServerConfig {
     
     private String address;
@@ -33,8 +35,6 @@ public class OneCServerConfig {
     private boolean central;
     @JsonProperty("logcfg path")
     private String logCfgPath;                    // путь к файлу logcfg.xml
-    @JsonProperty("dumps path")
-    private String dumpsPath;                     // каталог дампов
     private List<FilesConfig> files;              // набор каталогов с технологическим журналом, фильтры данных
     private List<OneCCredentials> administrators; // администраторы центрального сервера (если central == true)
     private List<OneCClusterConfig> clusters;     // кластеры, для которых данный сервер является центральным
@@ -111,14 +111,6 @@ public class OneCServerConfig {
 
     public void setLogCfgPath(String logCfgPath) {
         this.logCfgPath = logCfgPath;
-    }
-
-    public String getDumpsPath() {
-        return dumpsPath;
-    }
-
-    public void setDumpsPath(String dumpsPath) {
-        this.dumpsPath = dumpsPath;
     }
 
     public List<FilesConfig> getFiles() {
