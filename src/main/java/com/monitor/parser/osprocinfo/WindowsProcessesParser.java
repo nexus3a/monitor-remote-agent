@@ -187,6 +187,11 @@ public class WindowsProcessesParser implements ConsoleParser {
     }
 
     private void findParentPids() {
+        findParentPidsForLocalClusters();
+        findParentPidsForRemoteClusters();
+    }
+
+    private void findParentPidsForLocalClusters() {
         for (ProcessInfo local : processes) {
             if (RPHOST_PROC_NAME.equals(local.name)) {
                 continue;
@@ -205,6 +210,36 @@ public class WindowsProcessesParser implements ConsoleParser {
                     for (NetworkInfo externalNetwork : external.getNetwork()) {
                         if (localNetwork.externalIp.equals(externalNetwork.localIp)
                                 && localNetwork.externalPort.equals(externalNetwork.localPort)) {
+                            external.parentPid = local.pid;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void findParentPidsForRemoteClusters() {
+        for (ProcessInfo local : processes) {
+            if (RPHOST_PROC_NAME.equals(local.name)) {
+                continue;
+            }
+            for (NetworkInfo localNetwork : local.getNetwork()) {
+                for (ProcessInfo external : processes) {
+                    if (external == local || external.parentPid != null) {
+                        continue;
+                    }
+                    if (RAGENT_PROC_NAME.equals(local.name) && !RMNGR_PROC_NAME.equals(external.name)) {
+                        continue;
+                    }
+                    if (RMNGR_PROC_NAME.equals(local.name) && !RPHOST_PROC_NAME.equals(external.name)) {
+                        continue;
+                    }
+                    for (NetworkInfo externalNetwork : external.getNetwork()) {
+                        if (localNetwork.externalIp.equals(externalNetwork.externalIp)
+                                && localNetwork.externalPort.equals(externalNetwork.externalPort)
+                                && !localNetwork.externalIp.equals(localNetwork.localIp)
+                                && !externalNetwork.externalIp.equals(externalNetwork.localIp)) {
                             external.parentPid = local.pid;
                             break;
                         }
