@@ -139,7 +139,7 @@ public class LogRecordsHandler extends DefaultResponder {
                     // секций, то используется параметр "global-lock"
                     //
                     boolean globalLock = !"false".equalsIgnoreCase((String) parameters.get("global-lock", "false"));
-                    Lock lock = (section == null || globalLock) ? server.getLock() : section.getLock();
+                    Lock lock = (section == null || globalLock) ? server.getLogRecordsLock() : section.getLock();
 
                     if (lock.tryLock()) {
                         // удалось заблокировать секцию - читаем данные из неё

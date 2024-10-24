@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.8.10";
+    private static final String AGENT_VERSION = "2.8.13";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
     public  static final String SERVER_JKS_PASSWORD = "monitor";
 
@@ -90,7 +90,8 @@ public class Server {
     private final Semaphore pauseLock = new Semaphore(1);
     private final HashMap<Section, FileWatcher> watchers = new HashMap<>();
     
-    private final Lock lock = new ReentrantLock();
+    private final Lock logRecordsLock = new ReentrantLock();
+    private final Lock sessionInfoLock = new ReentrantLock();
     
     public static boolean isCaseInsensitiveFileSystem() {
         return System.getProperty("os.name").toLowerCase().startsWith("win");
@@ -205,8 +206,12 @@ public class Server {
         return pauseLock.availablePermits() == 0;
     }
     
-    public Lock getLock() {
-        return lock;
+    public Lock getLogRecordsLock() {
+        return logRecordsLock;
+    }
+
+    public Lock getSessionInfoLock() {
+        return sessionInfoLock;
     }
     
     private void sendStop() throws MalformedURLException, ProtocolException, IOException {

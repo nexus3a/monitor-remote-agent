@@ -17,12 +17,7 @@ package com.monitor.enterprise;
  *
 */
 
-import com._1c.v8.ibis.admin.IAgentAdminConnection;
-import com._1c.v8.ibis.admin.IInfoBaseConnectionShort;
-import com._1c.v8.ibis.admin.IInfoBaseInfoShort;
-import com._1c.v8.ibis.admin.ISessionInfo;
-import com._1c.v8.ibis.admin.IWorkingProcessInfo;
-import com._1c.v8.ibis.admin.IWorkingServerInfo;
+import com._1c.v8.ibis.admin.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

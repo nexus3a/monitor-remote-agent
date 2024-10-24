@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import com.monitor.agent.server.TextDB;
 import com.monitor.agent.server.config.OneCServerConfig;
+import java.io.File;
 
 public class DumpsInfoHandler extends DefaultResponder {
 
@@ -79,7 +80,8 @@ public class DumpsInfoHandler extends DefaultResponder {
         Server server = uriResource.initParameter(Server.class);
         server.waitForUnpause(); // ожидание снятия сервера с паузы
         
-        String result = "";
+        List<DumpInfoDto> collect = new ArrayList<>();
+        String result;
 
         try {
         
@@ -110,6 +112,11 @@ public class DumpsInfoHandler extends DefaultResponder {
 
                 for (String path : files.getPaths()) {
                     Path filePath = Paths.get(path);
+                    
+                    File check = filePath.toFile();
+                    if (!check.exists() || !check.isDirectory()) {
+                        continue;
+                    }
 
                     List<Path> filesList;
                     try (Stream<Path> stream = Files.list(filePath);) {
@@ -143,7 +150,6 @@ public class DumpsInfoHandler extends DefaultResponder {
                     }
                     Date date = new Date(Long.parseLong(time));
                     Date maxFileDate = MIN_DATE;
-                    List<DumpInfoDto> collect = new ArrayList<>();
 
                     for (Path file : filesList) {
                         if (Files.isDirectory(file)) {
@@ -169,9 +175,10 @@ public class DumpsInfoHandler extends DefaultResponder {
                         }
                     }
 
-                    result = objectMapper.writeValueAsString(collect);
                 }
             }
+            
+            result = objectMapper.writeValueAsString(collect);
         }
         catch (Exception ex) {
             return NanoHTTPD.newFixedLengthResponse(

@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class WindowsProcessesParser implements ConsoleParser {
     
@@ -16,6 +18,7 @@ public class WindowsProcessesParser implements ConsoleParser {
     private final static String RPHOST_PROC_NAME = "rphost";
     
     private final List<ProcessInfo> processes = new ArrayList<>();
+    private final Logger logger = LoggerFactory.getLogger(WindowsProcessesParser.class);
 
     public static class ProcessInfo {
 
@@ -110,11 +113,13 @@ public class WindowsProcessesParser implements ConsoleParser {
 
     private void getWmicRawData() throws IOException, InterruptedException {
         
-        Process wmicProcess = Runtime.getRuntime().exec(String.format(
+        String command = String.format(
                 "cmd /c wmic process where \"name='%s.exe' or name='%s.exe' or name='%s.exe'\" get Caption,ParentProcessId,ProcessId"
                         + " | findstr \"%s %s %s\"",
                 RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME,
-                RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME));
+                RAGENT_PROC_NAME, RMNGR_PROC_NAME, RPHOST_PROC_NAME);
+        
+        Process wmicProcess = Runtime.getRuntime().exec(command);
         
         try (BufferedReader wmicReader = new BufferedReader(new InputStreamReader(wmicProcess.getInputStream()))) {
             String wmicRecord;
@@ -128,7 +133,14 @@ public class WindowsProcessesParser implements ConsoleParser {
                 }
             }
         }
-        wmicProcess.waitFor();
+
+        try {
+            wmicProcess.waitFor();
+        }
+        catch (InterruptedException ex) {
+            logger.error("command = " + command, ex);
+            throw ex;
+        }
         
         // заглушка; привязка rphost будет делаться по netstat
         //
@@ -151,7 +163,9 @@ public class WindowsProcessesParser implements ConsoleParser {
             pids = pids + (pids.isEmpty() ? "" : " ") + pid;
             procMap.put(pid, procInfo);
         }
-        Process netstatProcess = Runtime.getRuntime().exec("cmd.exe /c netstat /a /n /o | findstr \"" + pids + "\"");
+        String command = "cmd.exe /c netstat /a /n /o | findstr \"" + pids + "\"";
+        
+        Process netstatProcess = Runtime.getRuntime().exec(command);
         
         try (BufferedReader netstatReader = new BufferedReader(new InputStreamReader(netstatProcess.getInputStream()))) {
             String netstatRecord;
@@ -183,7 +197,14 @@ public class WindowsProcessesParser implements ConsoleParser {
                 }
             }
         }
-        netstatProcess.waitFor();
+
+        try {
+            netstatProcess.waitFor();
+        }
+        catch (InterruptedException ex) {
+            logger.error("command = " + command, ex);
+            throw ex;
+        }
     }
 
     private void findParentPids() {

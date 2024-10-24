@@ -17,13 +17,14 @@ package com.monitor.agent.server.config;
  *
  */
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import com.monitor.enterprise.OneCCredentials;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+@JsonIgnoreProperties({ "infoBasesOrEmpty" })
 public class OneCClusterConfig {
     
     private String name;
@@ -103,6 +104,15 @@ public class OneCClusterConfig {
     
     public List<OneCInfoBaseConfig> getInfoBases() {
         return infoBases;
+    }
+
+    public List<OneCInfoBaseConfig> getInfoBasesOrEmpty() {
+        if (infoBases == null) {
+            return new ArrayList<>();
+        }
+        else {
+            return infoBases;
+        }
     }
 
     public void setInfoBases(List<OneCInfoBaseConfig> infoBases) {

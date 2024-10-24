@@ -17,12 +17,12 @@ package com.monitor.agent.server.config;
  *
  */
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.*;
 import com.monitor.enterprise.OneCCredentials;
+import java.util.ArrayList;
 import java.util.List;
 
-@JsonIgnoreProperties({ "dumps path" })
+@JsonIgnoreProperties({ "dumps path", "clutersOrEmpty" })
 public class OneCServerConfig {
     
     private String address;
@@ -94,6 +94,15 @@ public class OneCServerConfig {
 
     public List<OneCClusterConfig> getClusters() {
         return clusters;
+    }
+
+    public List<OneCClusterConfig> getClustersOrEmpty() {
+        if (clusters == null) {
+            return new ArrayList<>();
+        }
+        else {
+            return clusters;
+        }
     }
 
     public void setClusters(List<OneCClusterConfig> clusters) {
