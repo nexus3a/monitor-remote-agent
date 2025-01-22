@@ -67,7 +67,7 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.8.13";
+    private static final String AGENT_VERSION = "2.8.16";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
     public  static final String SERVER_JKS_PASSWORD = "monitor";
 

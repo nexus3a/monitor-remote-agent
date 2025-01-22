@@ -22,7 +22,9 @@ package com.monitor.agent.server.config;
  *
  */
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.monitor.enterprise.OneCCredentials;
 import java.util.List;
+import java.util.Base64;
 
 import org.apache.commons.lang.builder.ToStringBuilder;
 
@@ -31,6 +33,37 @@ public class Configuration {
     private List<FilesConfig> files;
     @JsonProperty("1c servers")
     private List<OneCServerConfig> oneCServers;
+    
+    public static final String encodeString(String string) {
+        if (string.isEmpty()) {
+            return string;
+        }
+        Double rnd = Math.floor(Math.random() * 255);
+        String temp = string.substring(1) + string.substring(0, 1) + new String(new byte[] { rnd.byteValue() });
+        temp = new String(Base64.getEncoder().encode(temp.getBytes()));
+        while (temp.endsWith("=")) {
+            temp = temp.substring(0, temp.length() - 1);
+        }
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < temp.length(); i++) {
+            String sym = String.valueOf(temp.charAt(i));
+            result.append(sym.toLowerCase().equals(sym) ? sym.toUpperCase() : sym.toLowerCase());
+        }
+        return result.toString();
+    }
+
+    public static final String decodeString(String string) {
+        if (string.isEmpty()) {
+            return string;
+        }
+        StringBuilder buff = new StringBuilder();
+        for (int i = 0; i < string.length(); i++) {
+            String sym = String.valueOf(string.charAt(i));
+            buff.append(sym.toLowerCase().equals(sym) ? sym.toUpperCase() : sym.toLowerCase());
+        }
+        String temp = new String(Base64.getDecoder().decode(buff.toString().getBytes()));
+        return temp.substring(temp.length() - 2, temp.length() - 1) + temp.substring(0, temp.length() - 2);
+    }
 
     public List<FilesConfig> getFiles() {
         return files;
@@ -61,6 +94,21 @@ public class Configuration {
         return null;
     }
     
+    public void encodePasswords() {
+        for (OneCServerConfig server : oneCServers) {
+            for (OneCCredentials credentials : server.getAdministrators()) {
+                String password = credentials.getPassword();
+                credentials.setPassword(encodeString(password));
+            }
+            for (OneCClusterConfig cluster : server.getClusters()) {
+                for (OneCCredentials credentials : cluster.getAdministrators()) {
+                    String password = credentials.getPassword();
+                    credentials.setPassword(encodeString(password));
+                }
+            }
+        }
+    }
+
     @Override
     public String toString() {
         return new ToStringBuilder(this).

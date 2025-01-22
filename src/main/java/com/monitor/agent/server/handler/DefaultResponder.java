@@ -76,8 +76,10 @@ public abstract class DefaultResponder implements UriResponder {
             return NanoHTTPD.newFixedLengthResponse(
                     status, 
                     "application/json", 
-                    String.format("{ \"status\":\"%s\", \"message\":\"statusJson() error\" }", 
-                            status.getRequestStatus()));
+                    String.format("{ \"status\":\"%s\", \"description\":\"%s\", \"message\":\"%s\" }", 
+                            status.getRequestStatus(),
+                            status.getDescription(),
+                            "statusJson() error"));
         }
     }
     

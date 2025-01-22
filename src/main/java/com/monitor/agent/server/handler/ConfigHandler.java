@@ -56,6 +56,7 @@ public class ConfigHandler extends DefaultResponder {
             
             if (writeConfig) {
                 Configuration config = mapper.readValue(contentJson, Configuration.class);
+                config.encodePasswords(); // перед записью шифруем пароли кластера
                 configManager.setConfig(config).writeConfiguration();
                 server.initializeFileWatchers();
                 response = NanoHTTPD.newFixedLengthResponse(
@@ -68,7 +69,7 @@ public class ConfigHandler extends DefaultResponder {
                 String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(config);
                 response = NanoHTTPD.newFixedLengthResponse(
                         NanoHTTPD.Response.Status.OK,
-                        NanoHTTPD.MIME_PLAINTEXT,
+                        "application/json",
                         json);
             }
         

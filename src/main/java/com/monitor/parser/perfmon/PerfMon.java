@@ -136,7 +136,7 @@ public class PerfMon implements PerfMonConstants {
         label_1:
         while (true) {
             cont = LogRecord();
-            bytesRead = token.bytesRead;
+//          bytesRead = token.bytesRead;
             if (!cont) {
                 break;
             }
@@ -202,6 +202,8 @@ public class PerfMon implements PerfMonConstants {
         switch ((jj_ntk == -1) ? jj_ntk_f() : jj_ntk) {
             case EOL: {
                 jj_consume_token(EOL);
+                recordsCount++;
+                bytesRead = token.bytesRead;
                 break;
             }
             case 0: {
@@ -213,7 +215,8 @@ public class PerfMon implements PerfMonConstants {
                 jj_consume_token(-1);
                 throw new ParseException();
         }
-        recordsCount++;
+//      recordsCount++;
+//      bytesRead = token.bytesRead;
         return onLogRecord(logRecord);
      }
 

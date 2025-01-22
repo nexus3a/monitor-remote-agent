@@ -59,6 +59,7 @@ public class FilterValue extends Filter {
         S_EMPTY,
         S_FILLED,
         S_EQUALS,
+        S_EQUALS_IGNORE_CASE,
         S_GREATER,
         S_GREATER_EQUALS,
         S_LESSER,
@@ -101,6 +102,8 @@ public class FilterValue extends Filter {
                     return Operation.LESSER_EQUALS;
                 case "s=" :
                     return Operation.S_EQUALS;
+                case "s~" :
+                    return Operation.S_EQUALS_IGNORE_CASE;
                 case "s>" :
                     return Operation.S_GREATER;
                 case "s>=" :
@@ -157,6 +160,8 @@ public class FilterValue extends Filter {
                     return ">=";
                 case S_EQUALS :
                     return "s=";
+                case S_EQUALS_IGNORE_CASE :
+                    return "s~";
                 case S_LESSER :
                     return "s<";
                 case S_LESSER_EQUALS :
@@ -452,6 +457,10 @@ public class FilterValue extends Filter {
                 }
                 case S_EQUALS: {
                     accepted = strValue.equals(val);
+                    break;
+                }
+                case S_EQUALS_IGNORE_CASE: {
+                    accepted = strValue.equalsIgnoreCase(val);
                     break;
                 }
                 case S_LESSER: {

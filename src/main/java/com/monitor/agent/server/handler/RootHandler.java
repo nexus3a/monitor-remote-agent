@@ -46,6 +46,7 @@ public class RootHandler extends DefaultResponder {
                 + "(post)/tjlogconfig : write tech-journal config content\n"
                 + "(get)/execquery?query=<query-text>&connection=<jdbc-cnn-string>&user=<db-user-name>&pass=<db-user-password> : return query resultset\n"
                 + "(get)/osprocinfo : return 1c os processes ports and pids\n"
+                + "(get)/dumpsinfo : return dump files list\n"
                 ;
         
         return NanoHTTPD.newFixedLengthResponse(

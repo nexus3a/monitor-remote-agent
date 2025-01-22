@@ -96,6 +96,7 @@ public class OneCServerConfig {
         return clusters;
     }
 
+    @JsonIgnore
     public List<OneCClusterConfig> getClustersOrEmpty() {
         if (clusters == null) {
             return new ArrayList<>();

@@ -184,7 +184,7 @@ public class DumpsInfoHandler extends DefaultResponder {
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.BAD_REQUEST,
                     NanoHTTPD.MIME_PLAINTEXT,
-                    ex.getMessage());
+                    ex.getClass().getName() + ": " + ex.getMessage());
         }
 
         return NanoHTTPD.newFixedLengthResponse(

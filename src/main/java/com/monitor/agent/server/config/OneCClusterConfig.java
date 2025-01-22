@@ -84,6 +84,31 @@ public class OneCClusterConfig {
         this.servers = servers;
     }
 
+    @JsonIgnore
+    public Set<OneCCredentials> getAdminVariants() {
+        // предполагаем, что пароли администраторов кластера могут хранится 
+        // в зашифрованном виде (хотя это не обязательно) - в таком случае 
+        // добавим ко множеству администраторов кластера новых администраторов,
+        // у которых пароли будут декодированными версиями паролей, хранящихся
+        // в настройке администраторов - один из паролей должен будет подойти
+        // при аутентификации
+        //
+        Set<OneCCredentials> result = new HashSet<>();
+        result.addAll(administrators);
+        for (OneCCredentials admin : administrators) {
+            OneCCredentials decodedAdmin = new OneCCredentials();
+            decodedAdmin.setLogin(admin.getLogin());
+            try {
+                decodedAdmin.setPassword(Configuration.decodeString(admin.getPassword()));
+                result.add(decodedAdmin);
+            }
+            catch (Exception e) {
+                // пропускаем такой пароль - он точно не шифровался ранее
+            }
+        }
+        return result;
+    }
+
     public Set<OneCCredentials> getAdministrators() {
         return administrators;
     }

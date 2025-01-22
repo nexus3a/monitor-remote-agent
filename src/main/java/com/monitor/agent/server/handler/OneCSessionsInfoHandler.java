@@ -169,7 +169,7 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
                             // обязательная аутентификация кластера (если не указан администратор кластера,
                             // то всё равно надо аутентифицироваться с пустым логином/паролем)
                             //
-                            cluster.setAdministrators(clusterConfig.getAdministrators());
+                            cluster.setAdministrators(clusterConfig.getAdminVariants());
                             cluster.authenticate();
 
                             List<OneCInfoBaseInfo> infoBasesInfo = new ArrayList<>();
