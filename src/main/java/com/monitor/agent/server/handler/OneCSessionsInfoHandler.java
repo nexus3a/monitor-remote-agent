@@ -26,10 +26,7 @@ import com.monitor.agent.server.config.*;
 import com.monitor.enterprise.*;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -89,8 +86,8 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
             RequestParameters parameters = getParameters();
 
             String spid = (String) parameters.get("spid", null);
-            String infoBaseId = (String) parameters.get("infoBase", null);
-            String clusterId = (String) parameters.get("cluster", null);
+            String infoBaseIds = (String) parameters.get("infoBase", null); // можно через запятую
+            String clusterIds = (String) parameters.get("cluster", null);   // можно через запятую
             String serverId = (String) parameters.get("server", null);
             String sprops = (String) parameters.get("props", null);
 
@@ -129,15 +126,17 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
                         // не укзанаы в настройках serverConfig
                         //
                         List<String> clusterNames;
-                        if (clusterId == null) {
+                        if (clusterIds == null) {
                             clusterNames = agent.getClusters()
                                     .stream()
                                     .map(c -> c.getName())
                                     .collect(Collectors.toList());
                         }
                         else {
-                            clusterNames = new ArrayList<>();
-                            clusterNames.add(clusterId);
+                            clusterNames = Arrays.asList(clusterIds.split(","))
+                                    .stream()
+                                    .map(c -> c.trim())
+                                    .collect(Collectors.toList());
                         }
 
                         List<OneCClusterConfig> clustersConfigs = new ArrayList<>();
@@ -176,26 +175,31 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
 
                             // создадим отдельную коллекцию настроек инфобаз, содержащую только те инфобазы,
                             // которые нужно будет возвращать клиенту; в случае, когда не указывается отбор
-                            // по инфобазе, то мы должны вернуть информацию по всем инфобазам кластера, даже
+                            // по инфобазе, мы должны вернуть информацию по всем инфобазам кластера, даже
                             // если они не укзанаы в настройках clusterConfig
                             //
-                            List<OneCInfoBaseConfig> infoBasesConfigs = new ArrayList<>();
-                            if (infoBaseId == null) {
-                                for (OneCInfoBase infoBase : cluster.getInfoBases()) {
-                                    infoBasesConfigs.add(new OneCInfoBaseConfig(infoBase.getName()));
-                                }
+                            List<OneCInfoBaseConfig> infoBasesConfigs;
+                            if (infoBaseIds == null) {
+                                infoBasesConfigs = cluster.getInfoBases()
+                                        .stream()
+                                        .map(b -> new OneCInfoBaseConfig(b.getName()))
+                                        .collect(Collectors.toList());
                             }
                             else {
-                                boolean baseFound = false; // != infoBaseFound!!!
-                                for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBasesOrEmpty()) {
-                                    if (infoBaseId.equals(infoBaseConfig.getId())) {
-                                        infoBasesConfigs.add(infoBaseConfig);
-                                        baseFound = true;
-                                        break;
+                                infoBasesConfigs = new ArrayList<>();
+                                for (String infoBaseId : infoBaseIds.split(",")) {
+                                    String infoBaseIdTrim = infoBaseId.trim();
+                                    boolean baseFound = false; // != infoBaseFound!!!
+                                    for (OneCInfoBaseConfig infoBaseConfig : clusterConfig.getInfoBasesOrEmpty()) {
+                                        if (infoBaseIdTrim.equals(infoBaseConfig.getId())) {
+                                            infoBasesConfigs.add(infoBaseConfig);
+                                            baseFound = true;
+                                            break;
+                                        }
                                     }
-                                }
-                                if (!baseFound) {
-                                    infoBasesConfigs.add(new OneCInfoBaseConfig(infoBaseId));
+                                    if (!baseFound) {
+                                        infoBasesConfigs.add(new OneCInfoBaseConfig(infoBaseIdTrim));
+                                    }
                                 }
                             }
 
@@ -269,15 +273,15 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
                                 "Не найден сервер %s",
                                 serverId));
                     }
-                    if (!clusterFound && clusterId != null) {
+                    if (!clusterFound && clusterIds != null) {
                         throw new IllegalStateException(String.format(
                                 "Не найден кластер %s",
-                                clusterId));
+                                clusterIds));
                     }
-                    if (!infoBaseFound && infoBaseId != null) {
+                    if (!infoBaseFound && infoBaseIds != null) {
                         throw new IllegalStateException(String.format(
                                 "Не найдена информационная база %s",
-                                infoBaseId));
+                                infoBaseIds));
                     }
 
                     String json = mapper.writeValueAsString(serversInfo);

@@ -222,6 +222,7 @@ public class FastTJParser implements LogParser {
     private final static String LOCKS_PROP_NAME = "Locks";
     private final static String LOCK_SPACE_NAME_PROP_NAME = "space";
     private final static String LOCK_SPACE_TYPE_PROP_NAME = "type";
+    private final static String LOCK_SPACE_IDX_PROP_NAME = "idx";
     private final static String LOCK_SPACE_RECORDS_PROP_NAME = "records";
     private final static String LOCK_SPACE_RECORDS_COUNT_PROP_NAME = "recordsCount";
     private final static String LOCK_GRANULARITY_PROP_NAME = "granularity";
@@ -1077,6 +1078,7 @@ public class FastTJParser implements LogParser {
 
                     lockMember.put(LOCK_SPACE_RECORDS_PROP_NAME + ".hash()", lockMemberRecords.hashCode());
                     logRecord.put(LOCKS_PROP_NAME, lockMember);
+
                     if (!filterAndStoreRecord(logRecord)) {
                         result = false;
                     }
@@ -1194,6 +1196,7 @@ public class FastTJParser implements LogParser {
                     String rk = null;                                           // lock element record key
                     int rlvl = -1;                                              // lock element record row level
                     lelm.put(LOCK_SPACE_RECORDS_PROP_NAME, rl);
+                    lelm.put(LOCK_SPACE_IDX_PROP_NAME, j + 1);                  // lock element 1-based index
                     for (int i = 0; i < lel.tc; i++) {
                         Token lelt = lel.letl.get(i);
                         int vl = (int)(lelt.te - lelt.tb);

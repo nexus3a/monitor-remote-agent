@@ -18,7 +18,10 @@ package com.monitor.agent.server.piped;
 */
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.PipedInputStream;
+import java.nio.channels.InterruptedByTimeoutException;
+import java.nio.charset.StandardCharsets;
 
 public class ParserPipedInputStream extends PipedInputStream {
     
@@ -46,15 +49,22 @@ public class ParserPipedInputStream extends PipedInputStream {
     
     @Override
     public synchronized int read(byte[] b, int off, int len) throws IOException {
-        long till = System.currentTimeMillis() + timeout; // ещё вариант: times = timeout / 50;
-        while (!eos && available() == 0 && System.currentTimeMillis() < till) {
+        long now = System.currentTimeMillis();
+        long till = now + timeout; // ещё вариант: times = timeout / 50;
+        while (!eos && available() == 0 && now < till) {
             notifyAll();
             try {
                 wait(1);
             }
             catch (InterruptedException ex) {
-                break;
+                throw new InterruptedIOException();
             }
+            now = System.currentTimeMillis();
+        }
+        if (now >= till) {
+//          pipe.getOutput().write(ParserPipedStream.INTERRUPTED_BY_TIMEOUT.getBytes(StandardCharsets.UTF_8));
+//          pipe.getOutput().close();
+//          throw new InterruptedByTimeoutException();
         }
         return super.read(b, off, available());
     }

@@ -21,6 +21,8 @@ import java.io.IOException;
 
 public class ParserPipedStream {
     
+    public static final String INTERRUPTED_BY_TIMEOUT = "INTERRUPTED_BY_TIMEOUT";
+    
     private final ParserPipedInputStream input;
     private final ParserPipedOutputStream output;
     private final int timeout;
