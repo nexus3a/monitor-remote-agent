@@ -14,6 +14,7 @@ import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.*;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,7 +83,7 @@ public class OneCRLParser implements LogParser {
     private int delay;
     private int maxTokenLength;
     private int getTokenLength;
-    private ParserCatalogsStorage catalogs;
+    private OneCRLCatalogsStorage catalogs;
 
     private byte mode = MODE_RECORD_BEGIN_EXPECTED;
     private long firstBytePos = 0;
@@ -90,6 +91,15 @@ public class OneCRLParser implements LogParser {
     private long filePos = 0;
     private long fileLinesRead = 0;
     
+    private boolean compact;
+    private final HashSet usedUsers;
+    private final HashSet usedComputers;
+    private final HashSet usedApplications;
+    private final HashSet usedEvents;
+    private final HashSet usedMetadata;
+    private final HashSet usedServers;
+    private final HashSet usedMainPorts;
+    private final HashSet usedAdditionalPorts;
     
     private byte icc = 0;  // текущий однобайтный UTF-символ
     
@@ -186,6 +196,15 @@ public class OneCRLParser implements LogParser {
         kvcc = -1;
         stream = null;
         volume = "";
+        
+        usedUsers = new HashSet();
+        usedComputers = new HashSet();
+        usedApplications = new HashSet();
+        usedEvents = new HashSet();
+        usedMetadata = new HashSet();
+        usedServers = new HashSet();
+        usedMainPorts = new HashSet();
+        usedAdditionalPorts = new HashSet();
     }
     
 
@@ -212,10 +231,22 @@ public class OneCRLParser implements LogParser {
     }
     
     
-    private ParserCatalogsStorage getDescriptorsCatalogs(File regLogCatalog) throws IOException, ParseException {
+    private void clearUsedIndexes() {
+        usedUsers.clear();
+        usedComputers.clear();
+        usedApplications.clear();
+        usedEvents.clear();
+        usedMetadata.clear();
+        usedServers.clear();
+        usedMainPorts.clear();
+        usedAdditionalPorts.clear();
+    }
+    
+    
+    private OneCRLCatalogsStorage getDescriptorsCatalogs(File regLogCatalog) throws IOException, ParseException {
         OneCRLDescriptorsParser parser = new OneCRLDescriptorsParser();
         
-        ParserCatalogsStorage storage = new ParserCatalogsStorage();
+        OneCRLCatalogsStorage storage = new OneCRLCatalogsStorage();
         parser.setRecordsStorage(storage);
         ParserParameters parameters = new ParserParameters();
         parameters.setDelay(0);
@@ -300,7 +331,7 @@ public class OneCRLParser implements LogParser {
             logrec.put(ADDITIONAL_DATA_PROP_NAME, additionalData);
         }
 
-        String vo;
+        Object vo;
         long fp = stream.getFilePointer();
         for (byte kv = 0; kv <= kvcc; kv++) {
             if (kv == 17) continue; // количество записей в дополнительных данных - не нужно возвращать
@@ -326,19 +357,106 @@ public class OneCRLParser implements LogParser {
                 case 0: k = DATE_PROP_NAME; break;
                 case 1: k = TRANSACTION_STATE_PROP_NAME; break;
                 case 2: k = TRANSACTION_DATA_PROP_NAME; break;
-                case 3: k = USER_PROP_NAME; break;
-                case 4: k = COMPUTER_PROP_NAME; break;
-                case 5: k = APPLICATION_PROP_NAME; break;
+                case 3: 
+                    k = USER_PROP_NAME;
+                    if (compact) {
+                        if (!usedUsers.contains(vo)) {
+                            usedUsers.add(vo);
+                            vo = catalogs.users.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.users.get(vo);
+                    }
+                    break;
+                case 4:
+                    k = COMPUTER_PROP_NAME;
+                    if (compact) {
+                        if (!usedComputers.contains(vo)) {
+                            usedComputers.add(vo);
+                            vo = catalogs.computers.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.computers.get(vo);
+                    }
+                    break;
+                case 5:
+                    k = APPLICATION_PROP_NAME;
+                    if (compact) {
+                        if (!usedApplications.contains(vo)) {
+                            usedApplications.add(vo);
+                            vo = catalogs.applications.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.applications.get(vo);
+                    }
+                    break;
                 case 6: k = CONNECTION_PROP_NAME; break;
-                case 7: k = EVENT_PROP_NAME; break;
+                case 7:
+                    k = EVENT_PROP_NAME;
+                    if (compact) {
+                        if (!usedEvents.contains(vo)) {
+                            usedEvents.add(vo);
+                            vo = catalogs.events.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.events.get(vo);
+                    }
+                    break;
                 case 8: k = LOG_LEVEL_PROP_NAME; break;
                 case 9: k = COMMENT_PROP_NAME; break;
-                case 10: k = METADATA_PROP_NAME; break;
+                case 10:
+                    k = METADATA_PROP_NAME;
+                    if (compact) {
+                        if (!usedMetadata.contains(vo)) {
+                            usedMetadata.add(vo);
+                            vo = catalogs.metadata.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.metadata.get(vo);
+                    }
+                    break;
                 case 11: k = DATA_VALUE_PROP_NAME; break;
                 case 12: k = DATA_PRESENTATION_PROP_NAME; break;
-                case 13: k = SERVER_PROP_NAME; break;
-                case 14: k = MAIN_PORT_PROP_NAME; break;
-                case 15: k = ADDITIONAL_PORT_PROP_NAME; break;
+                case 13:
+                    k = SERVER_PROP_NAME;
+                    if (compact) {
+                        if (!usedServers.contains(vo)) {
+                            usedServers.add(vo);
+                            vo = catalogs.servers.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.servers.get(vo);
+                    }
+                    break;
+                case 14:
+                    k = MAIN_PORT_PROP_NAME;
+                    if (compact) {
+                        if (!usedMainPorts.contains(vo)) {
+                            usedMainPorts.add(vo);
+                            vo = catalogs.mainPorts.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.mainPorts.get(vo);
+                    }
+                    break;
+                case 15:
+                    k = ADDITIONAL_PORT_PROP_NAME;
+                    if (compact) {
+                        if (!usedAdditionalPorts.contains(vo)) {
+                            usedAdditionalPorts.add(vo);
+                            vo = catalogs.additionalPorts.get(vo);
+                        }
+                    }
+                    else {
+                        vo = catalogs.additionalPorts.get(vo);
+                    }
                 case 16: k = SESSION_PROP_NAME; break;
                 default: k = kv == kvcc ? DATA_DIVIDER_PROP_NAME : "";
             }
@@ -377,6 +495,7 @@ public class OneCRLParser implements LogParser {
         }
         
         catalogs = getDescriptorsCatalogs(state.getFile().getParentFile());
+        clearUsedIndexes();
 
         volume = state.getFile().getName().split("\\.")[0]; // имя файла без расширения
         
@@ -384,6 +503,7 @@ public class OneCRLParser implements LogParser {
         addFields = state.getFields();
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
+        compact = parameters.isCompact();
         
         try (BufferedRandomAccessFileStream rafs = new BufferedRandomAccessFileStream(
                 state.getOpenedRandomAccessFile(),

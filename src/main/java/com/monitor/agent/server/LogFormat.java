@@ -34,7 +34,7 @@ public enum LogFormat {
     UNKNOWN;
     
     private static final Pattern TL_PATTERN = Pattern.compile("\\d\\d:\\d\\d.\\d\\d\\d\\d(\\d\\d)?-(\\d)+,");
-    private static final Pattern RL_PATTERN = Pattern.compile("1CV8LOG(ver 2.0)");
+    private static final Pattern RL_PATTERN = Pattern.compile("1CV8LOG\\(ver 2\\.0\\)");
     private static final Pattern PM_PATTERN = Pattern.compile("(PDH-TSV )|(PDH-CSV )");
     private static final int MAX_SCAN_BYTES = 128;
 

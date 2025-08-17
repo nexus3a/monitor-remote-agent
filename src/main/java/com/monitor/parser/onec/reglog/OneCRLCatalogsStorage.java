@@ -25,25 +25,25 @@ import java.util.List;
  *
  * @author Алексей
  */
-public class ParserCatalogsStorage implements ParserRecordsStorage {
+public class OneCRLCatalogsStorage implements ParserRecordsStorage {
     
     private int size;
 
-    public HashMap<String, String[]> users = new HashMap<>();
-    public HashMap<String, String> computers = new HashMap<>();
-    public HashMap<String, String> applications = new HashMap<>();
-    public HashMap<String, String> events = new HashMap<>();
-    public HashMap<String, String[]> metadata = new HashMap<>();
-    public HashMap<String, String> servers = new HashMap<>();
-    public HashMap<String, String> mainPorts = new HashMap<>();
-    public HashMap<String, String> additionalPorts = new HashMap<>();
-    public HashMap<String, String> dataAreas = new HashMap<>();
-    public HashMap<String, String> collection10 = new HashMap<>();
-    public HashMap<String, String> collection11 = new HashMap<>();
-    public HashMap<String, String> collection12 = new HashMap<>();
-    public HashMap<String, String> collection13 = new HashMap<>();
-
-    public ParserCatalogsStorage() {
+    public HashMap<Object, OneCRLCatalogRecord> users = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> computers = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> applications = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> events = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> metadata = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> servers = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> mainPorts = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> additionalPorts = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> dataAreas = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> collection10 = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> collection11 = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> collection12 = new HashMap<>();
+    public HashMap<Object, OneCRLCatalogRecord> collection13 = new HashMap<>();
+    
+    public OneCRLCatalogsStorage() {
         this.size = 0;
     }
 
@@ -58,43 +58,43 @@ public class ParserCatalogsStorage implements ParserRecordsStorage {
         
         if (null != catalog) switch (catalog) {
             case "1":
-                users.put(index, new String[] {value, description});
+                users.put(index, new OneCRLCatalogRecord(index, value, description));
                 break;
             case "2":
-                computers.put(index, value);
+                computers.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "3":
-                applications.put(index, value);
+                applications.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "4":
-                events.put(index, value);
+                events.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "5":
-                metadata.put(index, new String[] {value, description});
+                metadata.put(index, new OneCRLCatalogRecord(index, value, description));
                 break;
             case "6":
-                servers.put(index, value);
+                servers.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "7":
-                mainPorts.put(index, value);
+                mainPorts.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "8":
-                additionalPorts.put(index, value);
+                additionalPorts.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "9":
-                dataAreas.put(index, value);
+                dataAreas.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "10":
-                collection10.put(index, value);
+                collection10.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "11":
-                collection11.put(index, value);
+                collection11.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "12":
-                collection12.put(index, value);
+                collection12.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             case "13":
-                collection13.put(index, value);
+                collection13.put(index, new OneCRLCatalogRecord(index, value));
                 break;
             default:
                 break;
