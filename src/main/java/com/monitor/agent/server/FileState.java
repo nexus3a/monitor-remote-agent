@@ -261,8 +261,11 @@ public class FileState {
     }
 
     public void setLogFormat(String kind) {
-        if ("one_c_tech_journal".equalsIgnoreCase(kind)) {
-            this.logFormat = LogFormat.ONE_C_TECH_JOURNAL;
+        if ("one_c_tech_log".equalsIgnoreCase(kind)) {
+            this.logFormat = LogFormat.ONE_C_TECH_LOG;
+        }
+        else if ("one_c_reg_log".equalsIgnoreCase(kind)) {
+            this.logFormat = LogFormat.ONE_C_REG_LOG;
         }
         else if ("perfomance_monitor".equalsIgnoreCase(kind)) {
             this.logFormat = LogFormat.PERFOMANCE_MONITOR;

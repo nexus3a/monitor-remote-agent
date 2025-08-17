@@ -191,6 +191,19 @@ public class BufferedRandomAccessFileStream extends InputStream {
         return new String(strb, from, (to - from + 1), chs);
     }
 
+    public final byte readTo(byte ch) throws IOException {
+        while (true) {
+            byte c = bread();
+            if (c == -1 || c == ch) { return c; }
+        }
+    }
+
+    public final byte skipLine() throws IOException {
+        byte c = readTo("\n".getBytes()[0]);
+        if (c != -1) return c;
+        return -1;
+    }
+
     public long getFilePointer() throws IOException {
         return realpos - bufend + bufpos;
     }

@@ -32,6 +32,7 @@ public class ParserParameters {
     private int maxTokenLength;
     private String parserErrorLog;
     private int delay;
+    private boolean compact; // выгрузка ссылок, если ранее в логе уже был выгружен объект полностью
 
     public ParserParameters() {
         excludeData = new HashSet<>();
@@ -39,6 +40,7 @@ public class ParserParameters {
         maxTokenLength = MAX_TOKEN_LENGTH;
         parserErrorLog = "logs/parser-errors";
         delay = DELAY;
+        compact = false;
     }
 
     public Set<String> getExcludeData() {
@@ -79,6 +81,14 @@ public class ParserParameters {
 
     public boolean logParseExceptions() {
         return logParseExceptions;
+    }
+
+    public boolean isCompact() {
+        return compact;
+    }
+
+    public void setCompact(boolean compact) {
+        this.compact = compact;
     }
     
 }

@@ -28,11 +28,13 @@ import java.util.regex.Pattern;
 
 public enum LogFormat {
     
-    ONE_C_TECH_JOURNAL,
+    ONE_C_TECH_LOG,
+    ONE_C_REG_LOG,
     PERFOMANCE_MONITOR, 
     UNKNOWN;
     
-    private static final Pattern TJ_PATTERN = Pattern.compile("\\d\\d:\\d\\d.\\d\\d\\d\\d(\\d\\d)?-(\\d)+,");
+    private static final Pattern TL_PATTERN = Pattern.compile("\\d\\d:\\d\\d.\\d\\d\\d\\d(\\d\\d)?-(\\d)+,");
+    private static final Pattern RL_PATTERN = Pattern.compile("1CV8LOG(ver 2.0)");
     private static final Pattern PM_PATTERN = Pattern.compile("(PDH-TSV )|(PDH-CSV )");
     private static final int MAX_SCAN_BYTES = 128;
 
@@ -51,8 +53,11 @@ public enum LogFormat {
             Logger.getLogger(LogFormat.class.getName()).log(Level.SEVERE, null, ex);
         }
         String read = new String(buf, 0, bytesRead, charset);
-        if (TJ_PATTERN.matcher(read).find()) {
-            return LogFormat.ONE_C_TECH_JOURNAL;
+        if (TL_PATTERN.matcher(read).find()) {
+            return LogFormat.ONE_C_TECH_LOG;
+        }
+        else if (RL_PATTERN.matcher(read).find()) {
+            return LogFormat.ONE_C_REG_LOG;
         }
         else if (PM_PATTERN.matcher(read).find()) {
             return LogFormat.PERFOMANCE_MONITOR;

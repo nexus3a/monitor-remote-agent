@@ -23,7 +23,8 @@ import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.perfmon.PMParser;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParserParameters;
-import com.monitor.parser.onecf.FastTJParser;
+import com.monitor.parser.onec.reglog.OneCRLParser;
+import com.monitor.parser.onec.techlog.OneCTLParser;
 
 import java.io.File;
 import java.util.Collection;
@@ -56,9 +57,13 @@ public class ParserFileReader {
         this.draft = draft;
         this.parserParameters = parserParameters;
 
-        LogParser parser = new FastTJParser(); // new TJParser();
+        LogParser parser = new OneCTLParser();
         parser.setRecordsStorage(records);
-        parsers.put(LogFormat.ONE_C_TECH_JOURNAL, parser);
+        parsers.put(LogFormat.ONE_C_TECH_LOG, parser);
+
+        parser = new OneCRLParser();
+        parser.setRecordsStorage(records);
+        parsers.put(LogFormat.ONE_C_REG_LOG, parser);
 
         parser = new PMParser();
         parser.setRecordsStorage(records);

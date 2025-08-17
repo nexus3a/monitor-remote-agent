@@ -121,6 +121,16 @@ public class LogRecordsHandler extends DefaultResponder {
                     //
                     int delay = Integer.parseInt((String) parameters.get("delay", "0"));
 
+                    // получаем признак "компактного" вывода данных лог-файлов (используется в журнале
+                    // регистрации), когда для первого упоминания объекта лог-файла (например, "Метаданынх")
+                    // в возвращаемые данные выводмтся полная информация по объекту (индекс, значение, ...),
+                    // а при последующих использованиях этого же объекта выводится только его индекс;
+                    // это позволит принимающей стороне знать все характеристики объекта (когда он первый
+                    // раз встретится в полученных данных) и при этом не передавать каждый раз эти характеристики
+                    // при выгрузке записей лога с этим объектом (последующие записи хранят только индекс объекта)
+                    //
+                    boolean compact = Boolean.parseBoolean((String) parameters.get("compact", "false"));
+
                     // создаём структуру с дополнительными данными, которую можно
                     // передать парсеру
                     //
@@ -128,6 +138,7 @@ public class LogRecordsHandler extends DefaultResponder {
                     parserParams.setExcludeData(excludes);
                     parserParams.setMaxTokenLength(maxTokenLen);
                     parserParams.setDelay(delay);
+                    parserParams.setCompact(compact);
 
                     // получаем секцию, в пределах которой нужно получать данные из лог-файлов
                     //

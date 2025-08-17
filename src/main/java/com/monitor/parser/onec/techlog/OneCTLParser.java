@@ -1,4 +1,4 @@
-package com.monitor.parser.onecf;
+package com.monitor.parser.onec.techlog;
 
 
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
@@ -54,7 +54,7 @@ import java.util.regex.Pattern;
  *
  * @author Алексей
  */
-public class FastTJParser implements LogParser {
+public class OneCTLParser implements LogParser {
     
     public static boolean DEBUG_SYMBOLS = false;
     public static boolean DEBUG_RECORDS = false;
@@ -149,7 +149,7 @@ public class FastTJParser implements LogParser {
     private KeyValuesRecord kvrc = kvr0;     // границы ключей и значений для текущей записи
     private KeyValuesRecord kvrp = kvr1;     // границы ключей и значений для предыдущей записи
     
-    private boolean kvsh = false;            // на какой из рабочих массивов ссылается kvrc - на kvr0 или kvr0
+    private boolean kvsh = false;            // на какой из рабочих массивов ссылается kvrc - на kvr0 или kvr1
     
     private byte kvcc;                       // количество-1 прочитанных пар ключ-значение в текущей записи лога kvrc
     
@@ -428,10 +428,11 @@ public class FastTJParser implements LogParser {
     
     
     private static class StringConstructor {
-        private final byte[] strb = new byte[128];
+        private static final int MAX_LENGTH = 128;
+        private final byte[] strb = new byte[MAX_LENGTH];
         private int size = 0;
         private void reset() { size = 0; }
-        private void addByte(byte b) { strb[size++] = b; }
+        private void addByte(byte b) { if (size < MAX_LENGTH) strb[size++] = b; }
         @Override
         public String toString() { return new String(strb, 0, size, UTF8); }
     }
@@ -449,7 +450,7 @@ public class FastTJParser implements LogParser {
     
     private static class KeyValuesRecord {
         public final KeyValueBounds[] kv = new KeyValueBounds[64];
-        public final OneCTJRecord lr = new OneCTJRecord();
+        public final OneCTLRecord lr = new OneCTLRecord();
         public long bytesRead = 0;                           // поизиция конца записи в файле
         public boolean isReadyToStore = false;               // готова к помещению в хранилище?
         public boolean isContext = false;                    // event == Context?
@@ -926,7 +927,7 @@ public class FastTJParser implements LogParser {
     }
     
     
-    public FastTJParser() {
+    public OneCTLParser() {
         recordsStorage = new ParserNullStorage(); // new ParserListStorage();
         validBytesRead = 0;
         unfilteredCount = 0;
@@ -962,7 +963,7 @@ public class FastTJParser implements LogParser {
             return true;
         }
         validBytesRead = keyValueRecord.bytesRead - 1;
-        OneCTJRecord logRecord = keyValueRecord.lr;
+        OneCTLRecord logRecord = keyValueRecord.lr;
         if (logRecord.containsLocks) {
             // отдельная обработка, если у события есть свойство "Locks":
             // каждая запись пространства блокировок со своими данными
@@ -1102,7 +1103,7 @@ public class FastTJParser implements LogParser {
     }
 
     
-    public boolean filterAndStoreRecord(OneCTJRecord logRecord) {
+    public boolean filterAndStoreRecord(OneCTLRecord logRecord) {
         try {
             if (filter == null || filter.accept(logRecord)) {
                 filteredCount++;
@@ -1118,7 +1119,7 @@ public class FastTJParser implements LogParser {
             }
         }
         catch (Exception ex) {
-            OneCTJRecord message = new OneCTJRecord();
+            OneCTLRecord message = new OneCTLRecord();
             message.put("LOGSERIALIZEERROR", ex.getMessage());
             try {
                 recordsStorage.put(message);
@@ -1132,13 +1133,13 @@ public class FastTJParser implements LogParser {
     }
 
     
-    public boolean beforeStoreRecord(OneCTJRecord logRecord) throws java.text.ParseException {
+    public boolean beforeStoreRecord(OneCTLRecord logRecord) throws java.text.ParseException {
         return true;
     }
     
     
     private boolean buildRecord() throws IOException {
-        OneCTJRecord logrec = kvrc.lr;
+        OneCTLRecord logrec = kvrc.lr;
         logrec.clear();
         logrec.timestamp = timestamp;
         
@@ -1413,7 +1414,10 @@ public class FastTJParser implements LogParser {
                         errorFragmentFile);
             }
             exception = ex;
-            throw new ParseException(ex.getMessage() + " at line " + fileLinesRead + "; file " + state.getFile().getPath());
+            throw new ParseException(String.format("%s at line %d; file %s", 
+                    ex.getMessage(),
+                    fileLinesRead,
+                    state.getFile().getPath()));
         }
         catch (Exception ex) {
             exception = ex;
