@@ -51,11 +51,11 @@ public class OneCRLParser implements LogParser {
     public static final String LOG_LEVEL_PROP_NAME = "level";                 // важность
     public static final String COMMENT_PROP_NAME = "comment";                 // комментарий
     public static final String METADATA_PROP_NAME = "metadata";               // метаданные
-    public static final String DATA_VALUE_PROP_NAME = "dvalue";               // данные
-    public static final String DATA_PRESENTATION_PROP_NAME = "dpresentation"; // представление данных
+    public static final String DATA_VALUE_PROP_NAME = "data";                 // данные
+    public static final String DATA_PRESENTATION_PROP_NAME = "presentation";  // представление данных
     public static final String SERVER_PROP_NAME = "server";                   // сервер
     public static final String MAIN_PORT_PROP_NAME = "mainport";              // основной порт
-    public static final String ADDITIONAL_PORT_PROP_NAME = "addport";         // вспомогательный  порт
+    public static final String ADDITIONAL_PORT_PROP_NAME = "addport";         // вспомогательный порт
     public static final String SESSION_PROP_NAME = "session";                 // сеанс
     public static final String ADDITIONAL_DATA_PROP_NAME = "raw";             // дополнительные данные (массив)
     public static final String DATA_DIVIDER_PROP_NAME = "divider";            // разделитель данных (?)
@@ -436,27 +436,32 @@ public class OneCRLParser implements LogParser {
                     break;
                 case 14:
                     k = MAIN_PORT_PROP_NAME;
-                    if (compact) {
-                        if (!usedMainPorts.contains(vo)) {
-                            usedMainPorts.add(vo);
-                            vo = catalogs.mainPorts.get(vo);
-                        }
-                    }
-                    else {
-                        vo = catalogs.mainPorts.get(vo);
-                    }
+                //  if (compact) {
+                //      if (!usedMainPorts.contains(vo)) {
+                //          usedMainPorts.add(vo);
+                //          vo = catalogs.mainPorts.get(vo);
+                //      }
+                //  }
+                //  else {
+                //      vo = catalogs.mainPorts.get(vo);
+                //  }
+                    vo = catalogs.mainPorts.get(vo);
+                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
                     break;
                 case 15:
                     k = ADDITIONAL_PORT_PROP_NAME;
-                    if (compact) {
-                        if (!usedAdditionalPorts.contains(vo)) {
-                            usedAdditionalPorts.add(vo);
-                            vo = catalogs.additionalPorts.get(vo);
-                        }
-                    }
-                    else {
-                        vo = catalogs.additionalPorts.get(vo);
-                    }
+                //  if (compact) {
+                //        if (!usedAdditionalPorts.contains(vo)) {
+                //            usedAdditionalPorts.add(vo);
+                //            vo = catalogs.additionalPorts.get(vo);
+                //        }
+                //    }
+                //    else {
+                //        vo = catalogs.additionalPorts.get(vo);
+                //    }
+                    vo = catalogs.additionalPorts.get(vo);
+                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
+                    break;
                 case 16: k = SESSION_PROP_NAME; break;
                 default: k = kv == kvcc ? DATA_DIVIDER_PROP_NAME : "";
             }
