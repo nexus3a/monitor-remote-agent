@@ -150,7 +150,6 @@ public class OneCRLDescriptorsParser implements LogParser {
         public long vb = 0;
         public long ve = 0;
         public String kv = null; // значение ключа строкой
-        public boolean isLocks = false;
     }
     
     
@@ -621,7 +620,6 @@ public class OneCRLDescriptorsParser implements LogParser {
                             }
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
-                            // если это значение ключа "Locks", то парсим значение
                             mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
                             break;
                         case MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED:

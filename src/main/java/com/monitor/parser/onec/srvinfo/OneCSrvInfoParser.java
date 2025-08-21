@@ -14,8 +14,6 @@ import com.monitor.parser.reader.ParserRecordsStorage;
 
 import java.io.*;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -75,7 +73,6 @@ public class OneCSrvInfoParser implements LogParser {
     private Throwable exception;
     private PredefinedFields addFields;
     private Filter filter;
-    private String volume;
     private int maxCount;
     private long validBytesRead = 0L;
     private long unfilteredCount = 0L;
@@ -84,22 +81,12 @@ public class OneCSrvInfoParser implements LogParser {
     private int delay;
     private int maxTokenLength;
     private int getTokenLength;
-    private OneCRLCatalogsStorage catalogs;
 
     private byte mode = MODE_RECORD_BEGIN_EXPECTED;
     private long firstBytePos = 0;
     private long startPos = 0;
     private long filePos = 0;
     private long fileLinesRead = 0;
-    
-    private final HashSet usedUsers;
-    private final HashSet usedComputers;
-    private final HashSet usedApplications;
-    private final HashSet usedEvents;
-    private final HashSet usedMetadata;
-    private final HashSet usedServers;
-    private final HashSet usedMainPorts;
-    private final HashSet usedAdditionalPorts;
     
     private byte icc = 0;  // текущий однобайтный UTF-символ
     
@@ -109,8 +96,6 @@ public class OneCSrvInfoParser implements LogParser {
     
     private KeyValuesRecord kvrc = new KeyValuesRecord();
 
-    private byte kvcc;                       // количество-1 прочитанных пар ключ-значение в текущей записи лога kvrc
-    
 
     public static boolean copyFileFragment(File src, long fromPos, long toPos, File dest) throws IOException {
         if (dest.exists()) {
@@ -192,20 +177,7 @@ public class OneCSrvInfoParser implements LogParser {
         exception = null;
         delay = 0;
         maxTokenLength = Integer.MAX_VALUE;
-        catalogs = null;
-
-        kvcc = -1;
         stream = null;
-        volume = "";
-        
-        usedUsers = new HashSet();
-        usedComputers = new HashSet();
-        usedApplications = new HashSet();
-        usedEvents = new HashSet();
-        usedMetadata = new HashSet();
-        usedServers = new HashSet();
-        usedMainPorts = new HashSet();
-        usedAdditionalPorts = new HashSet();
     }
     
 
@@ -229,18 +201,6 @@ public class OneCSrvInfoParser implements LogParser {
     @Override
     public Throwable getException() {
         return exception;
-    }
-    
-    
-    private void clearUsedIndexes() {
-        usedUsers.clear();
-        usedComputers.clear();
-        usedApplications.clear();
-        usedEvents.clear();
-        usedMetadata.clear();
-        usedServers.clear();
-        usedMainPorts.clear();
-        usedAdditionalPorts.clear();
     }
     
     
@@ -324,106 +284,44 @@ public class OneCSrvInfoParser implements LogParser {
         kvrecord.endsAt = filePos;
         kvrecord.isEmpty = (kvreclength == -1);
         
-        logrec.put(VOLUME_PROP_NAME, volume);
-        logrec.put(REFERENCE_PROP_NAME, kvrecord.startsAt);
-        
-        ArrayList<Object> additionalData = null;
-        if (kvreclength > 18) {
-            additionalData = new ArrayList<>();
-            logrec.put(ADDITIONAL_DATA_PROP_NAME, additionalData);
-        }
-
         Object vo;
         long fp = stream.getFilePointer();
         for (byte kv = 0; kv <= kvreclength; kv++) {
-            if (kv == 17) continue; // количество записей в дополнительных данных - не нужно возвращать
             
             KeyValueBounds kvi = kvrecord.kv[kv];
-            
-            if (kvi.vb > 0) {
-                int vl = (int)(kvi.ve - kvi.vb);
-                int l = vl > getTokenLength ? maxTokenLength : vl;
-                stream.seek(kvi.vb);
-                String vs = stream.readStripNewLine(l, UTF8);
-                if (l != vl) {
-                    vs = vs + " (... ещё " + (vl - l) + " симв.)";
-                }
-                vo = getRidOfUnprintables(vs);
-            }
-            else {
-                vo = "";
-            }
-            
-            String k;
-            switch (kv) {
-                case 0: k = DATE_PROP_NAME; break;
-                case 1: k = TRANSACTION_STATE_PROP_NAME; break;
-                case 2: k = TRANSACTION_DATA_PROP_NAME; break;
-                case 3: 
-                    k = USER_PROP_NAME;
-                    vo = catalogs.users.get(vo);
-                    break;
-                case 4:
-                    k = COMPUTER_PROP_NAME;
-                    vo = catalogs.computers.get(vo);
-                    break;
-                case 5:
-                    k = APPLICATION_PROP_NAME;
-                    vo = catalogs.applications.get(vo);
-                    break;
-                case 6: k = CONNECTION_PROP_NAME; break;
-                case 7:
-                    k = EVENT_PROP_NAME;
-                    vo = catalogs.events.get(vo);
-                    break;
-                case 8: k = LOG_LEVEL_PROP_NAME; break;
-                case 9: k = COMMENT_PROP_NAME; break;
-                case 10:
-                    k = METADATA_PROP_NAME;
-                    vo = catalogs.metadata.get(vo);
-                    break;
-                case 11: k = DATA_VALUE_PROP_NAME; break;
-                case 12: k = DATA_PRESENTATION_PROP_NAME; break;
-                case 13:
-                    k = SERVER_PROP_NAME;
-                    vo = catalogs.servers.get(vo);
-                    break;
-                case 14:
-                    k = MAIN_PORT_PROP_NAME;
-                    vo = catalogs.mainPorts.get(vo);
-                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
-                    break;
-                case 15:
-                    k = ADDITIONAL_PORT_PROP_NAME;
-                    vo = catalogs.additionalPorts.get(vo);
-                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
-                    break;
-                case 16: k = SESSION_PROP_NAME; break;
-                default: k = kv == kvreclength ? DATA_DIVIDER_PROP_NAME : "";
-            }
 
-            if (kv > 17 && kv < kvreclength) { // добавляем в массив дополнительных данных кроме последнего элемента
-                assert additionalData != null;
-                additionalData.add(vo);
+            if (kvi.kvr == null) {
+                // это простое значение
+                if (kvi.vb > 0) {
+                    int vl = (int)(kvi.ve - kvi.vb);
+                    int l = vl > getTokenLength ? maxTokenLength : vl;
+                    stream.seek(kvi.vb);
+                    String vs = stream.readStripNewLine(l, UTF8);
+                    if (l != vl) {
+                        vs = vs + " (... ещё " + (vl - l) + " симв.)";
+                    }
+                    vo = getRidOfUnprintables(vs);
+                }
+                else {
+                    vo = "";
+                }
             }
             else {
-                logrec.put(k, vo);
-                if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
+                // вложенное значение
+                vo = null;
             }
+            
+            String k = "field" + kv;
+            
+            logrec.put(k, vo);
+            if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
         }
         stream.seek(fp);
         
         // разбор журнала будет продолжен только если количество отфильтрованных записей
         // не больше заданного количества
         //
-        boolean continueParsing = onLogRecord(kvrecord);
-        if (continueParsing) {
-            kvrecord.startsAt = kvrecord.endsAt;
-        }
-        
-        kvreclength = -1;
-        
-        return continueParsing;
+        return onLogRecord(kvrecord);
     }
     
     
@@ -434,11 +332,6 @@ public class OneCSrvInfoParser implements LogParser {
         if (maxRecords <= 0) {
             return;
         }
-        
-        catalogs = getDescriptorsCatalogs(state.getFile().getParentFile());
-        clearUsedIndexes();
-
-        volume = state.getFile().getName().split("\\.")[0]; // имя файла без расширения
         
         maxCount = maxRecords;
         addFields = state.getFields();
@@ -519,6 +412,8 @@ public class OneCSrvInfoParser implements LogParser {
         byte bytesInSym = 1;                       // количество байтов в прочитанном UTF-8 символе
 
         KeyValueBounds kvc = new KeyValueBounds(); // текущая пара ключ-значение
+        
+        boolean recfinished = false;               // признак - прочитана ли запись полностью
     
         do {
             firstBytePos = filePos;
@@ -609,14 +504,9 @@ public class OneCSrvInfoParser implements LogParser {
                             mode = MODE_VALUE_EXPECTED;
                             break;
                         case MODE_VALUE_EXPECTED:
+                            kvc = kvr.kv[++kvr.count];            // обнаружено новое [вложенное] значение
+                            kvc.kvr = read(stream, parameters);   // чтение вложенного значения
                             mode = MODE_VALUE_EXPECTED;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать новое значение
-                                kvc = kvr.kv[++kvr.count];
-                                // зафиксировать начало значения
-                                kvc.vb = firstBytePos;
-                            }
-                            nestedCurvedValueLevel++;
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                             break;
@@ -627,37 +517,18 @@ public class OneCSrvInfoParser implements LogParser {
                 case RIGHT_CURLY_BRACKET:
                     switch (mode) {
                         case MODE_PLAIN_VALUE:
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать конец значения
-                                kvc.ve = firstBytePos;
-                                mode = MODE_RECORD_TERMINATE;
-                            }
-                            else {
-                                nestedCurvedValueLevel--;
-                                mode = MODE_PLAIN_VALUE;
-                            }
+                            kvc.ve = firstBytePos;                // зафиксировать конец значения
+                            recfinished = true;
+                            mode = MODE_VALUE_EXPECTED;
                             break;
                         case MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED:
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать конец значения (-1)
-                                kvc.ve = firstBytePos - 1;
-                                mode = MODE_RECORD_TERMINATE;
-                            }
-                            else {
-                                nestedCurvedValueLevel--;
-                                mode = MODE_PLAIN_VALUE;
-                            }
+                            kvc.ve = firstBytePos - 1;            // зафиксировать конец значения (-1)
+                            mode = MODE_VALUE_EXPECTED;
                             break;
                         case MODE_VALUE_EXPECTED:
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать конец значения - оно пустое
-                                kvc.ve = firstBytePos;
-                                mode = MODE_RECORD_TERMINATE;
-                            }
-                            else {
-                                nestedCurvedValueLevel--;
-                                mode = MODE_PLAIN_VALUE;
-                            }
+                            kvc.ve = firstBytePos;                // зафиксировать конец значения
+                            recfinished = true;
+                            mode = MODE_VALUE_EXPECTED;
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                             break;
@@ -668,39 +539,25 @@ public class OneCSrvInfoParser implements LogParser {
                 case COMMA:
                     switch (mode) {
                         case MODE_VALUE_EXPECTED:
+                            kvc = kvr.kv[++kvr.count];            // обнаружено новое значение
+                            kvc.vb = firstBytePos;                // зафиксировать конец значения (оно пустое)
+                            kvc.ve = firstBytePos;
                             mode = MODE_VALUE_EXPECTED;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать новое значение
-                                kvc = kvr.kv[++kvr.count];
-                                // зафиксировать конец значения (оно пустое)
-                                kvc.vb = firstBytePos;
-                                kvc.ve = firstBytePos; // = kvc.vb ?
-                            }
                             break;
                         case MODE_PLAIN_VALUE:
+                            kvc.ve = firstBytePos;                // зафиксировать конец значения
                             mode = MODE_VALUE_EXPECTED;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать конец значения
-                                kvc.ve = firstBytePos;
-                            }
                             break;
                         case MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED:
+                            kvc.ve = firstBytePos - 1;            // зафиксировать конец значения
                             mode = MODE_VALUE_EXPECTED;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать конец значения (-1)
-                                kvc.ve = firstBytePos - 1;
-                            }
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                             break;
                         case MODE_RECORD_TERMINATE:
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать запись в коллекции
-                                if (!buildRecord()) {
-                                    icc = EOF;
-                                    break;
-                                }
-                            }
+                            // запись прочитана полностью
+                            recfinished = true;
+                            icc = EOF;
                             mode = MODE_RECORD_BEGIN_EXPECTED;
                             break;
                         case MODE_RECORD_BEGIN_EXPECTED:
@@ -712,16 +569,11 @@ public class OneCSrvInfoParser implements LogParser {
                 case QUOTATION_MARK:
                     switch (mode) {
                         case MODE_VALUE_EXPECTED:
+                            kvc = kvr.kv[++kvr.count];            // обнаружено новое значение в кавычках
+                            kvc.vb = firstBytePos + 1;            // зафиксировать начало значения (+1)
                             mode = MODE_VALUE_INSIDE_QUOTATION_MARK;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать новое значение
-                                kvc = kvr.kv[++kvr.count];
-                                // зафиксировать начало значения (+1)
-                                kvc.vb = firstBytePos + 1;
-                            }
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
-                            // если это значение ключа "Locks", то парсим значение
                             mode = MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED;
                             break;
                         case MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED:
@@ -732,6 +584,9 @@ public class OneCSrvInfoParser implements LogParser {
                             throw new ParseException("wrong quotation mark appear");
                     }
                     break;
+                case EOF:
+                    recfinished = true;
+                    break;
                 case NEW_LINE:
                     fileLinesRead++;
                     if (mode == MODE_VALUE_EXPECTED) {
@@ -740,31 +595,23 @@ public class OneCSrvInfoParser implements LogParser {
                     // здесь break не нужен
                 default: // любой другой однобайтный символ (в т.ч. EOF) или символ из двух и более байтов
                     switch (mode) {
-                        
                         case MODE_RECORD_TERMINATE:
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать запись в коллекции; сюда попадём
-                                // только если встретился перевод строки, но не EOF
-                                if (!buildRecord()) {
-                                    icc = EOF;
-                                    break;
-                                }
-                            }
+                            // запись прочитана полностью; сюда попадём
+                            // только если встретился перевод строки, но не EOF
+                            recfinished = true;
+                            icc = EOF;
                             mode = MODE_RECORD_BEGIN_EXPECTED;
-                            // здесь break не нужен
+                            break;
                         case MODE_RECORD_BEGIN_EXPECTED:
                             if (bytesInSym != 1) break; // BOM
-                            if (icc == EOF) break;
-                            break;
-                        
-                        case MODE_VALUE_EXPECTED:
-                            mode = MODE_PLAIN_VALUE;
-                            if (nestedCurvedValueLevel == 0) {
-                                // зафиксировать новое значение
-                                kvc = kvr.kv[++kvr.count];
-                                // зафиксировать начало значения
-                                kvc.vb = firstBytePos;
+                            if (icc == EOF) {
+                                recfinished = true;
                             }
+                            break;
+                        case MODE_VALUE_EXPECTED:
+                            kvc = kvr.kv[++kvr.count];            // обнаружено новое значение
+                            kvc.vb = firstBytePos;                // зафиксировать начало значения
+                            mode = MODE_PLAIN_VALUE;
                             break;
                         case MODE_PLAIN_VALUE:
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
@@ -774,7 +621,7 @@ public class OneCSrvInfoParser implements LogParser {
                     }
             }
         }
-        while (icc != EOF);
+        while (!recfinished);
 
         return kvr;
     }
