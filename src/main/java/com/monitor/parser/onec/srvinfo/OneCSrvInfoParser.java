@@ -7,6 +7,7 @@ import com.monitor.agent.server.FileState;
 import com.monitor.agent.server.PredefinedFields;
 import com.monitor.agent.server.filter.Filter;
 import com.monitor.parser.LogParser;
+import com.monitor.parser.LogRecord;
 import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
 import com.monitor.parser.reader.ParserNullStorage;
@@ -30,6 +31,7 @@ public class OneCSrvInfoParser implements LogParser {
     private static final long GC_PER_RECORDS = 10000L;
     
     private static final byte EOF = -1;
+    private static final byte TAB = 9;
     private static final byte NEW_LINE = 10;
     private static final byte CARRIAGE_RETURN = 13;
     private static final byte QUOTATION_MARK = 34;
@@ -59,12 +61,13 @@ public class OneCSrvInfoParser implements LogParser {
     public static final String ADDITIONAL_DATA_PROP_NAME = "raw";             // дополнительные данные (массив)
     public static final String DATA_DIVIDER_PROP_NAME = "divider";            // разделитель данных (?)
 
-    private static final byte MODE_RECORD_TERMINATE = 0;                      // чтение окончания записи
-    private static final byte MODE_RECORD_BEGIN_EXPECTED = 1;                 // ожидается начало записи
-    private static final byte MODE_VALUE_EXPECTED = 2;                        // ожидается начало value
-    private static final byte MODE_PLAIN_VALUE = 3;                           // чтение value
-    private static final byte MODE_VALUE_INSIDE_QUOTATION_MARK = 4;           // чтение value в кавычках
-    private static final byte MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED = 5;        // ожидается запятая или кавычка
+    private static final byte MODE_UNKNOWN = 0;                               // первый вызов парсера
+    private static final byte MODE_RECORD_TERMINATE = 1;                      // чтение окончания записи
+    private static final byte MODE_RECORD_BEGIN_EXPECTED = 2;                 // ожидается начало записи
+    private static final byte MODE_VALUE_EXPECTED = 3;                        // ожидается начало value
+    private static final byte MODE_PLAIN_VALUE = 4;                           // чтение value
+    private static final byte MODE_VALUE_INSIDE_QUOTATION_MARK = 5;           // чтение value в кавычках
+    private static final byte MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED = 6;        // ожидается запятая или кавычка
 
 
     private BufferedRandomAccessFileStream stream;
@@ -138,20 +141,20 @@ public class OneCSrvInfoParser implements LogParser {
     }
 
     
-    private static class KeyValueBounds {
+    protected static class KeyValueBounds {
         public long kb = 0;
         public long ke = 0;
         public long vb = 0;
         public long ve = 0;
-        public String kv = null;           // значение ключа строкой
+        public String vv = null;           // значение строкой
         public KeyValuesRecord kvr = null; // если value не простое значение, а вложенный объект
     }
     
     
-    private static class KeyValuesRecord {
+    protected static class KeyValuesRecord {
         private static final int MAX_RECORDS = 64;
         public final KeyValueBounds[] kv = new KeyValueBounds[MAX_RECORDS];
-        public final OneCRLDescriptorsRecord lr = new OneCRLDescriptorsRecord();
+        public final OneCSrvInfoRecord lr = new OneCSrvInfoRecord();
         public long endsAt = 0;                           // позиция конца записи в файле
         public long startsAt = 0;                         // позиция начала записи в файле
         public boolean isEmpty = true;                    // содержит ли записи
@@ -164,6 +167,18 @@ public class OneCSrvInfoParser implements LogParser {
             endsAt = 0;
             startsAt = 0;
             isEmpty = true;
+        }
+        @Override
+        public String toString() {
+            String s = "{";
+            for (byte i = 0; i <= count; i++) {
+                if (i > 0) s = s + ", ";
+                if (kv[i].kvr == null)
+                    s = s + kv[i].vv;
+                else
+                    s = s + kv[i].kvr.toString();
+            }
+            return s + "}";
         }
     }
     
@@ -204,22 +219,6 @@ public class OneCSrvInfoParser implements LogParser {
     }
     
     
-    private OneCRLCatalogsStorage getDescriptorsCatalogs(File regLogCatalog) throws IOException, ParseException {
-        OneCRLDescriptorsParser parser = new OneCRLDescriptorsParser();
-        
-        OneCRLCatalogsStorage storage = new OneCRLCatalogsStorage();
-        parser.setRecordsStorage(storage);
-        ParserParameters parameters = new ParserParameters();
-        parameters.setDelay(0);
-        parameters.setMaxTokenLength(1024 * 32);
-        parameters.setLogParseExceptions(false);
-        FileState state = new FileState(new File(regLogCatalog, "1Cv8.lgf"));
-        
-        parser.parse(state, "UTF-8", 0, 999999999, null, parameters);
-        return storage;
-    }
-    
-    
     private boolean onLogRecord(KeyValuesRecord keyValueRecord) {
         boolean result;
         if (filteredCount >= maxCount) {
@@ -229,7 +228,7 @@ public class OneCSrvInfoParser implements LogParser {
             return true;
         }
         validBytesRead = keyValueRecord.endsAt - 1;
-        OneCRLDescriptorsRecord logRecord = keyValueRecord.lr;
+        OneCSrvInfoRecord logRecord = keyValueRecord.lr;
         result = filterAndStoreRecord(logRecord);
 
         unfilteredCount++;
@@ -241,7 +240,7 @@ public class OneCSrvInfoParser implements LogParser {
     }
 
     
-    public boolean filterAndStoreRecord(OneCRLDescriptorsRecord logRecord) {
+    public boolean filterAndStoreRecord(LogRecord logRecord) {
         try {
             if (filter == null || filter.accept(logRecord)) {
                 filteredCount++;
@@ -271,21 +270,46 @@ public class OneCSrvInfoParser implements LogParser {
     }
 
     
-    public boolean beforeStoreRecord(OneCRLDescriptorsRecord logRecord) throws java.text.ParseException {
+    public boolean beforeStoreRecord(LogRecord logRecord) throws java.text.ParseException {
         return true;
     }
     
     
-    private boolean buildRecord(KeyValuesRecord kvrecord) throws IOException {
-        OneCRLDescriptorsRecord logrec = kvrecord.lr;
+    protected void buildRecord(KeyValuesRecord kvrecord) throws IOException {
+        if (DEBUG_RECORDS) { System.out.println("kvrecord = " + kvrecord); }
+
+        OneCSrvInfoRecord logrec = kvrecord.lr;
         logrec.clear();
+        byte kvreclength = kvrecord.count;
+
+        Object vo;
+        for (byte kv = 0; kv <= kvreclength; kv++) {
+            
+            KeyValueBounds kvi = kvrecord.kv[kv];
+
+            if (kvi.kvr == null) {
+                vo = kvi.vv;
+            }
+            else {
+                // вложенное значение
+                vo = null;
+            }
+            
+            String k = "field" + kv;
+            
+            logrec.put(k, vo);
+            if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
+        }
+    }
+    
+    
+    private KeyValuesRecord fillValues(KeyValuesRecord kvrecord) throws IOException {
         byte kvreclength = kvrecord.count;
 
         kvrecord.endsAt = filePos;
         kvrecord.isEmpty = (kvreclength == -1);
         
         Object vo;
-        long fp = stream.getFilePointer();
         for (byte kv = 0; kv <= kvreclength; kv++) {
             
             KeyValueBounds kvi = kvrecord.kv[kv];
@@ -305,23 +329,15 @@ public class OneCSrvInfoParser implements LogParser {
                 else {
                     vo = "";
                 }
+                kvi.vv = (String) vo;
             }
             else {
                 // вложенное значение
-                vo = null;
+                fillValues(kvi.kvr);
             }
-            
-            String k = "field" + kv;
-            
-            logrec.put(k, vo);
-            if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
         }
-        stream.seek(fp);
         
-        // разбор журнала будет продолжен только если количество отфильтрованных записей
-        // не больше заданного количества
-        //
-        return onLogRecord(kvrecord);
+        return kvrecord;
     }
     
     
@@ -337,6 +353,15 @@ public class OneCSrvInfoParser implements LogParser {
         addFields = state.getFields();
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
+
+        fileLinesRead = 0;
+        unfilteredCount = 0;
+        filteredCount = 0;
+        delay = parameters == null ? 0 : parameters.getDelay();
+        maxTokenLength = parameters == null ? Integer.MAX_VALUE : parameters.getMaxTokenLength();
+        getTokenLength = maxTokenLength == Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) (maxTokenLength * 1.05);
+
+        mode = MODE_UNKNOWN;
         
         try (BufferedRandomAccessFileStream rafs = new BufferedRandomAccessFileStream(
                 state.getOpenedRandomAccessFile(),
@@ -344,11 +369,13 @@ public class OneCSrvInfoParser implements LogParser {
             stream = rafs;
             stream.seek(fromPosition);
             fileLinesRead = 0;
-            KeyValuesRecord raw = read(stream, parameters);
-            buildRecord(raw);
+            KeyValuesRecord record = read();
+            record = fillValues(record);
+            buildRecord(record);
+            onLogRecord(record);
         }
         catch (ParseException ex) {
-            if (parameters.logParseExceptions()) {
+            if (parameters != null && parameters.logParseExceptions()) {
                 String parserErrorLog = makeParserErrorsLogDir(parameters);
                 File errorFragmentFile = new File(String.format("%s/%s.%s.%s.parse_error", 
                         parserErrorLog,
@@ -377,7 +404,7 @@ public class OneCSrvInfoParser implements LogParser {
     }
 
 
-    private KeyValuesRecord read(BufferedRandomAccessFileStream stream, ParserParameters parameters) 
+    private KeyValuesRecord read() 
             throws IOException, ParseException {
         
         KeyValuesRecord kvr = new KeyValuesRecord();
@@ -390,16 +417,9 @@ public class OneCSrvInfoParser implements LogParser {
         filePos = fromPosition;
         validBytesRead = fromPosition;
 
-        fileLinesRead = 0;
-        unfilteredCount = 0;
-        filteredCount = 0;
-        delay = parameters == null ? 0 : parameters.getDelay();
-        maxTokenLength = parameters == null ? Integer.MAX_VALUE : parameters.getMaxTokenLength();
-        getTokenLength = maxTokenLength == Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) (maxTokenLength * 1.05);
-        
-        int nestedCurvedValueLevel = 0;            // уровень вложенности значения в фигурных скобках
-
-        mode = MODE_RECORD_BEGIN_EXPECTED;
+        if (mode == MODE_UNKNOWN) {
+            mode = MODE_RECORD_BEGIN_EXPECTED;
+        }
         
         byte[] b2 = new byte[2];                   // буфер UTF-символа для отладки
         byte[] b3 = new byte[3];                   // буфер UTF-символа для отладки
@@ -496,8 +516,6 @@ public class OneCSrvInfoParser implements LogParser {
             }
 
             switch (icc) {
-                case CARRIAGE_RETURN:
-                    break;
                 case LEFT_CURLY_BRACKET:
                     switch (mode) {
                         case MODE_RECORD_BEGIN_EXPECTED:
@@ -505,8 +523,8 @@ public class OneCSrvInfoParser implements LogParser {
                             break;
                         case MODE_VALUE_EXPECTED:
                             kvc = kvr.kv[++kvr.count];            // обнаружено новое [вложенное] значение
-                            kvc.kvr = read(stream, parameters);   // чтение вложенного значения
-                            mode = MODE_VALUE_EXPECTED;
+                            kvc.kvr = read();                     // чтение вложенного значения
+                            mode = MODE_PLAIN_VALUE;
                             break;
                         case MODE_VALUE_INSIDE_QUOTATION_MARK:
                             break;
@@ -589,6 +607,9 @@ public class OneCSrvInfoParser implements LogParser {
                     break;
                 case NEW_LINE:
                     fileLinesRead++;
+                    // здесь break не нужен
+                case CARRIAGE_RETURN:
+                case TAB:
                     if (mode == MODE_VALUE_EXPECTED) {
                         break;
                     }
