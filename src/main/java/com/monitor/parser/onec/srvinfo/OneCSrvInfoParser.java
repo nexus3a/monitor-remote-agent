@@ -15,6 +15,7 @@ import com.monitor.parser.reader.ParserRecordsStorage;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -148,6 +149,9 @@ public class OneCSrvInfoParser implements LogParser {
         public long ve = 0;
         public String vv = null;           // значение строкой
         public KeyValuesRecord kvr = null; // если value не простое значение, а вложенный объект
+        boolean isSimple() { return kvr == null; }
+        boolean isComplex() { return kvr != null; }
+        String getValue() { return vv; }
     }
     
     
@@ -161,6 +165,18 @@ public class OneCSrvInfoParser implements LogParser {
         public byte count = -1;                           // количество-1 прочитанных пар ключ-значение (длина kv - 1)
         public KeyValuesRecord() {
             for (int i = 0; i < kv.length; i++) kv[i] = new KeyValueBounds();
+        }
+        public String getSimple(int idx) { 
+            if (idx > count) return "";
+            KeyValueBounds kvb = kv[idx];
+            if (kvb.isSimple()) return kvb.vv;
+            return ""; // если запрашивали simple, а установлено complex-значение
+        }
+        public KeyValuesRecord getComplex(int idx) { 
+            if (idx > count) return new KeyValuesRecord();
+            KeyValueBounds kvb = kv[idx];
+            if (kvb.isComplex()) return kvb.kvr;
+            return new KeyValuesRecord(); // если запрашивали complex, а установлено simple-значение
         }
         public void clear() {
             lr.clear();
@@ -275,31 +291,74 @@ public class OneCSrvInfoParser implements LogParser {
     }
     
     
+    protected OneCSrvInfoRecord buildClusterValue(KeyValuesRecord kvrecord) throws IOException {
+        OneCSrvInfoRecord clusterValue = new OneCSrvInfoRecord();
+        clusterValue.put("uuid", kvrecord.getSimple(0));
+        clusterValue.put("name", kvrecord.getSimple(1));
+        clusterValue.put("port", kvrecord.getSimple(2));
+        clusterValue.put("server-name", kvrecord.getSimple(3));
+        String cluster1 = kvrecord.getSimple(4);
+        String secureConnection = kvrecord.getSimple(5);
+        String secureConnectionStr;
+        switch ((String) secureConnection) {
+            case "0" : secureConnectionStr = "off"; break;               // выключено
+            case "1" : secureConnectionStr = "only-connection"; break;   // только соединение
+            case "2" : secureConnectionStr = "always-on"; break;         // постоянно
+            default : secureConnectionStr = "";
+        }
+        clusterValue.put("secure-connection", secureConnectionStr);
+        clusterValue.put("working-process-restart-interval", kvrecord.getSimple(6));
+        clusterValue.put("problem-working-process-stop-delay", kvrecord.getSimple(7));
+        String cluster5 = kvrecord.getSimple(8);
+        String cluster6 = kvrecord.getSimple(9);
+        String cluster7 = kvrecord.getSimple(10);
+        KeyValuesRecord clusterComputerAndPort = kvrecord.getComplex(11);
+        OneCSrvInfoRecord serverAndPort = new OneCSrvInfoRecord();
+        serverAndPort.put("name", clusterComputerAndPort.getSimple(0));
+        serverAndPort.put("port", clusterComputerAndPort.getSimple(1));
+        clusterValue.put("server", serverAndPort);
+        String clusterPayloadDistribution = kvrecord.getSimple(12);
+        String clusterPayloadDistributionStr;
+        switch ((String) clusterPayloadDistribution) {
+            case "0" : clusterPayloadDistributionStr = "by-memory"; break;       // приоритет по памяти
+            case "1" : clusterPayloadDistributionStr = "by-perfomance"; break;   // приоритет по производительности
+            default : clusterPayloadDistributionStr = "";
+        }
+        clusterValue.put("payload-distribution", clusterPayloadDistributionStr);
+        String cluster10 = kvrecord.getSimple(13);
+        clusterValue.put("problem-working-process-forced-stop", kvrecord.getSimple(14));
+        clusterValue.put("working-process-dump-on-memory-overload", kvrecord.getSimple(15));
+        
+        return clusterValue;
+    }
+
     protected void buildRecord(KeyValuesRecord kvrecord) throws IOException {
         if (DEBUG_RECORDS) { System.out.println("kvrecord = " + kvrecord); }
 
         OneCSrvInfoRecord logrec = kvrecord.lr;
         logrec.clear();
         byte kvreclength = kvrecord.count;
-
-        Object vo;
-        for (byte kv = 0; kv <= kvreclength; kv++) {
-            
-            KeyValueBounds kvi = kvrecord.kv[kv];
-
-            if (kvi.kvr == null) {
-                vo = kvi.vv;
-            }
-            else {
-                // вложенное значение
-                vo = null;
-            }
-            
-            String k = "field" + kv;
-            
-            logrec.put(k, vo);
-            if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
+        
+        if (kvreclength < 4) {
+            return;
         }
+        
+        ArrayList<OneCSrvInfoRecord> clustersValues = new ArrayList();
+        KeyValuesRecord clusters = kvrecord.getComplex(0);
+        for (int ci = 1; ci <= clusters.count; ci++) { // первое значение пропускаем - там количество кластеров
+            clustersValues.add(buildClusterValue(clusters.getComplex(ci)));
+        }
+        
+        KeyValuesRecord clusters1 = kvrecord.getComplex(1);
+        String clusters2 = kvrecord.getSimple(2);
+        String clusters3 = kvrecord.getSimple(3);
+        
+        logrec.put("clusters", clustersValues);
+        logrec.put("field1", new ArrayList());
+        logrec.put("field2", clusters2);
+        logrec.put("field3", clusters3);
+        
+        if (DEBUG_RECORDS) { System.out.println(logrec); }                
     }
     
     
