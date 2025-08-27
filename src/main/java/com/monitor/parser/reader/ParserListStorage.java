@@ -15,7 +15,6 @@
  */
 package com.monitor.parser.reader;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monitor.parser.LogRecord;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,8 +25,7 @@ import java.util.List;
  */
 public class ParserListStorage implements ParserRecordsStorage {
     
-    private final List<byte[]> records;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final List<LogRecord> records;
 
     public ParserListStorage() {
         this.records = new ArrayList<>();
@@ -35,7 +33,7 @@ public class ParserListStorage implements ParserRecordsStorage {
 
     @Override
     public void put(LogRecord record) throws Exception {
-        records.add(mapper.writeValueAsBytes(record));
+        records.add(record);
     }
 
     @Override
@@ -57,7 +55,7 @@ public class ParserListStorage implements ParserRecordsStorage {
     }
 
     @Override
-    public List<byte[]> getAll() {
+    public List<LogRecord> getAll() {
         return records;
     }
     

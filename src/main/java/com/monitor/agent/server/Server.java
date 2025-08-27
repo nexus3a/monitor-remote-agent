@@ -143,6 +143,7 @@ public class Server {
         httpd.addRoute("/execquery", ExecQueryHandler.class, this);
         httpd.addRoute("/osprocinfo", OSProcessInfoHandler.class, this);
         httpd.addRoute("/dumpsinfo", DumpsInfoHandler.class, this);
+        httpd.addRoute("/srvinfo", SrvInfoHandler.class, this);
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
 

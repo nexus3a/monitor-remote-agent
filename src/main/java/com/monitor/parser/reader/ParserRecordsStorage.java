@@ -34,6 +34,6 @@ public interface ParserRecordsStorage {
     
     public void close();
     
-    public List<byte[]> getAll();
+    public List getAll();
 
 }

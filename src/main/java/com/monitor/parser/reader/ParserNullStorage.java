@@ -54,7 +54,7 @@ public class ParserNullStorage implements ParserRecordsStorage {
     }
 
     @Override
-    public List<byte[]> getAll() {
+    public List getAll() {
         return new ArrayList<>();
     }
     

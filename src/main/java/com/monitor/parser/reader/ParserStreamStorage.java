@@ -38,7 +38,7 @@ public class ParserStreamStorage implements ParserRecordsStorage {
     private int size;
     
     private long streamTouchMoment;
-    private long streamTouchTimeout;
+    private final long streamTouchTimeout;
 
     public ParserStreamStorage(OutputStream stream, long streamTouchTimeout) {
         this.stream = stream;
@@ -83,7 +83,7 @@ public class ParserStreamStorage implements ParserRecordsStorage {
     }
 
     @Override
-    public List<byte[]> getAll() {
+    public List getAll() {
         return new ArrayList<>();
     }
     

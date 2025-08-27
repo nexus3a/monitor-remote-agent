@@ -44,11 +44,11 @@ public class OneCClusterInfoParser extends OneCSrvInfoParser {
             seansStartBlocking.put("date-from", ssb.getSimple(1));
             seansStartBlocking.put("date-to", ssb.getSimple(2));
             seansStartBlocking.put("message", ssb.getSimple(3));
-            seansStartBlocking.put("umblock-code", ssb.getSimple(4));
-            seansStartBlocking.put("umblock-parameter", ssb.getSimple(5));
+            seansStartBlocking.put("unblock-code", ssb.getSimple(4));
+            seansStartBlocking.put("unblock-parameter", ssb.getSimple(5));
             infobaseValue.put("seans-start-blocking", seansStartBlocking);
             infobaseValue.put("scheduled-jobs-blocked", "1".equals(infobase.getSimple(11)) ? "true" : "false");
-            infobaseValue.put("licensing-by-1c-server", "2".equals(infobase.getSimple(12)) ? "true" : "false");
+            infobaseValue.put("licensing-by-1c-server", "1".equals(infobase.getSimple(12)) ? "true" : "false");
             infobaseValue.put("seance-outer-management", infobase.getSimple(13));
             infobaseValue.put("strict-outer-management-using", "1".equals(infobase.getSimple(14)) ? "true" : "false");
             infobaseValue.put("security-profile", infobase.getSimple(15));

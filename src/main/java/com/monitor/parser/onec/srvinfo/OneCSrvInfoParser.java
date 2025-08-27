@@ -272,7 +272,7 @@ public class OneCSrvInfoParser implements LogParser {
             }
         }
         catch (Exception ex) {
-            OneCRLDescriptorsRecord message = new OneCRLDescriptorsRecord();
+            OneCRLRecord message = new OneCRLRecord();
             message.put("LOGSERIALIZEERROR", ex.getMessage());
             try {
                 recordsStorage.put(message);
@@ -312,7 +312,7 @@ public class OneCSrvInfoParser implements LogParser {
         String cluster5 = kvrecord.getSimple(8);
         String cluster6 = kvrecord.getSimple(9);
         String cluster7 = kvrecord.getSimple(10);
-        KeyValuesRecord clusterComputerAndPort = kvrecord.getComplex(11);
+        KeyValuesRecord clusterComputerAndPort = kvrecord.getComplex(11).getComplex(1);
         OneCSrvInfoRecord serverAndPort = new OneCSrvInfoRecord();
         serverAndPort.put("name", clusterComputerAndPort.getSimple(0));
         serverAndPort.put("port", clusterComputerAndPort.getSimple(1));
@@ -326,8 +326,8 @@ public class OneCSrvInfoParser implements LogParser {
         }
         clusterValue.put("payload-distribution", clusterPayloadDistributionStr);
         String cluster10 = kvrecord.getSimple(13);
-        clusterValue.put("problem-working-process-forced-stop", kvrecord.getSimple(14));
-        clusterValue.put("working-process-dump-on-memory-overload", kvrecord.getSimple(15));
+        clusterValue.put("problem-working-process-forced-stop", "1".equals(kvrecord.getSimple(14)) ? "true" : "false");
+        clusterValue.put("working-process-dump-on-memory-overload", "1".equals(kvrecord.getSimple(15)) ? "true" : "false");
         
         return clusterValue;
     }
@@ -339,7 +339,7 @@ public class OneCSrvInfoParser implements LogParser {
         logrec.clear();
         byte kvreclength = kvrecord.count;
         
-        if (kvreclength < 4) {
+        if (kvreclength < 3) {
             return;
         }
         
@@ -413,6 +413,7 @@ public class OneCSrvInfoParser implements LogParser {
         filter = Filter.and(state.getFilter(), fltr == null ? null : fltr.copy());
         exception = null;
 
+        startPos = fromPosition;
         fileLinesRead = 0;
         unfilteredCount = 0;
         filteredCount = 0;
@@ -472,7 +473,6 @@ public class OneCSrvInfoParser implements LogParser {
         long fromPosition = stream.getFilePointer();
         kvr.endsAt = fromPosition;
         kvr.startsAt = fromPosition;
-        startPos = fromPosition;
         filePos = fromPosition;
         validBytesRead = fromPosition;
 

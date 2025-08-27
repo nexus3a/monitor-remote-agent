@@ -148,7 +148,7 @@ public class ParserFileReader {
         return pos + bytesRead;
     }
 
-    public List<byte[]> getRecords() {
+    public List getRecords() {
         return records.getAll();
     }
     

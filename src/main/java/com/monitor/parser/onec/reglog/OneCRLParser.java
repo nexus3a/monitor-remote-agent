@@ -165,7 +165,7 @@ public class OneCRLParser implements LogParser {
     private static class KeyValuesRecord {
         private static final int MAX_RECORDS = 64;
         public final KeyValueBounds[] kv = new KeyValueBounds[MAX_RECORDS];
-        public final OneCRLDescriptorsRecord lr = new OneCRLDescriptorsRecord();
+        public final OneCRLRecord lr = new OneCRLRecord();
         public long endsAt = 0;                           // позиция конца записи в файле
         public long startsAt = 0;                         // позиция начала записи в файле
         public boolean isEmpty = true;                    // содержит ли записи
@@ -267,7 +267,7 @@ public class OneCRLParser implements LogParser {
             return true;
         }
         validBytesRead = keyValueRecord.endsAt - 1;
-        OneCRLDescriptorsRecord logRecord = keyValueRecord.lr;
+        OneCRLRecord logRecord = keyValueRecord.lr;
         result = filterAndStoreRecord(logRecord);
 
         unfilteredCount++;
@@ -279,7 +279,7 @@ public class OneCRLParser implements LogParser {
     }
 
     
-    public boolean filterAndStoreRecord(OneCRLDescriptorsRecord logRecord) {
+    public boolean filterAndStoreRecord(OneCRLRecord logRecord) {
         try {
             if (filter == null || filter.accept(logRecord)) {
                 filteredCount++;
@@ -295,7 +295,7 @@ public class OneCRLParser implements LogParser {
             }
         }
         catch (Exception ex) {
-            OneCRLDescriptorsRecord message = new OneCRLDescriptorsRecord();
+            OneCRLRecord message = new OneCRLRecord();
             message.put("LOGSERIALIZEERROR", ex.getMessage());
             try {
                 recordsStorage.put(message);
@@ -309,13 +309,13 @@ public class OneCRLParser implements LogParser {
     }
 
     
-    public boolean beforeStoreRecord(OneCRLDescriptorsRecord logRecord) throws java.text.ParseException {
+    public boolean beforeStoreRecord(OneCRLRecord logRecord) throws java.text.ParseException {
         return true;
     }
     
     
     private boolean buildRecord() throws IOException {
-        OneCRLDescriptorsRecord logrec = kvrc.lr;
+        OneCRLRecord logrec = kvrc.lr;
         logrec.clear();
 
         kvrc.endsAt = filePos;
@@ -509,6 +509,8 @@ public class OneCRLParser implements LogParser {
         exception = null;
         compact = parameters.isCompact();
         
+        startPos = fromPosition;
+
         try (BufferedRandomAccessFileStream rafs = new BufferedRandomAccessFileStream(
                 state.getOpenedRandomAccessFile(),
                 STREAM_BUFFER_SIZE)) {
@@ -564,7 +566,6 @@ public class OneCRLParser implements LogParser {
         long fromPosition = stream.getFilePointer();
         kvrc.endsAt = fromPosition;
         kvrc.startsAt = fromPosition;
-        startPos = fromPosition;
         filePos = fromPosition;
         validBytesRead = fromPosition;
 

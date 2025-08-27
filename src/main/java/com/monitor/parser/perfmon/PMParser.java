@@ -24,7 +24,7 @@ import com.monitor.agent.server.FileState;
 import com.monitor.parser.LogParser;
 import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
-import com.monitor.parser.reader.ParserListStorage;
+import com.monitor.parser.reader.ParserByteListStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
 import java.io.IOException;
 
@@ -42,7 +42,7 @@ public class PMParser extends PerfMon implements LogParser {
     
     
     public PMParser() {
-        recordsStorage = new ParserListStorage();
+        recordsStorage = new ParserByteListStorage();
         filteredCount = 0L;
         firstInFile = true;
         recordsBytesRead = 0L;

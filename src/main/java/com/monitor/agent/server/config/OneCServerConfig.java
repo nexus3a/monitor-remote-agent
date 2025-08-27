@@ -35,6 +35,8 @@ public class OneCServerConfig {
     private boolean central;
     @JsonProperty("logcfg path")
     private String logCfgPath;                    // путь к файлу logcfg.xml
+    @JsonProperty("srvinfo path")
+    private String srvInfoPath;                   // путь к каталогу srvinfo
     private List<FilesConfig> files;              // набор каталогов с технологическим журналом, фильтры данных
     private List<OneCCredentials> administrators; // администраторы центрального сервера (если central == true)
     private List<OneCClusterConfig> clusters;     // кластеры, для которых данный сервер является центральным
@@ -123,6 +125,14 @@ public class OneCServerConfig {
         this.logCfgPath = logCfgPath;
     }
 
+    public String getSrvInfoPath() {
+        return srvInfoPath;
+    }
+
+    public void setSrvInfoPath(String srvInfoPath) {
+        this.srvInfoPath = srvInfoPath;
+    }
+    
     public List<FilesConfig> getFiles() {
         return files;
     }

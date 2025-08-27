@@ -15,11 +15,8 @@
  */
 package com.monitor.parser.reader;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monitor.parser.LogRecord;
-import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,29 +24,18 @@ import java.util.List;
  *
  * @author Алексей
  */
-public class ParserWriterStorage implements ParserRecordsStorage {
+public class ParserByteListStorage implements ParserRecordsStorage {
     
-    private int size;
-    private final Writer writer;
-    private final ObjectMapper mapper;
+    private final List<byte[]> records;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    public ParserWriterStorage(Writer writer) {
-        this.size = 0;
-        this.writer = writer;
-        
-        JsonFactory jsonFactory = new JsonFactory();
-        jsonFactory.configure(JsonGenerator.Feature.AUTO_CLOSE_TARGET, false);
-        mapper = new ObjectMapper(jsonFactory);
+    public ParserByteListStorage() {
+        this.records = new ArrayList<>();
     }
 
     @Override
     public void put(LogRecord record) throws Exception {
-        this.size++;
-        writer.write(mapper.writeValueAsString(record));
-    //  mapper.writeValue(writer, record);
-        if (size % 100 == 0) {
-            writer.flush();
-        }
+        records.add(mapper.writeValueAsBytes(record));
     }
 
     @Override
@@ -58,12 +44,12 @@ public class ParserWriterStorage implements ParserRecordsStorage {
     
     @Override
     public int size() {
-        return size;
+        return records.size();
     }
     
     @Override
     public void clear() {
-        this.size = 0;
+        records.clear();
     }
     
     @Override
@@ -72,7 +58,7 @@ public class ParserWriterStorage implements ParserRecordsStorage {
 
     @Override
     public List getAll() {
-        return new ArrayList<>();
+        return records;
     }
     
 }
