@@ -13,8 +13,13 @@ import com.monitor.parser.reader.ParserRecordsStorage;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,6 +34,13 @@ public class OneCRLParser implements LogParser {
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final Pattern UNPRINTABLE_PATTERN = Pattern.compile("[^\\u0009\\u000A\\u000D\\u0020-\\uD7FF\\uE000-\\uFFFD\\u10000-\\u10FFFF]");    
     private static final long GC_PER_RECORDS = 10000L;
+    private static final long TIME_BASE = - Instant.parse("0001-01-01T00:00:00.00Z").toEpochMilli();
+    private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
+    private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("GMT+0");
+    
+    static {
+        DATE_FORMAT.setTimeZone(TIME_ZONE);
+    }
     
     private static final byte EOF = -1;
     private static final byte NEW_LINE = 10;
@@ -43,22 +55,23 @@ public class OneCRLParser implements LogParser {
     public static final String DATE_PROP_NAME = "date";                       // дата события
     public static final String TRANSACTION_STATE_PROP_NAME = "tstate";        // состояние транзакции
     public static final String TRANSACTION_DATA_PROP_NAME = "tdata";          // данные транзакции - момент и смещение в логе
+    public static final String TRANSACTION_ID = "tid";                        // идентификатор транзакции получаем из tdata
     public static final String USER_PROP_NAME = "user";                       // пользователь
     public static final String COMPUTER_PROP_NAME = "computer";               // компьютер
     public static final String APPLICATION_PROP_NAME = "application";         // приложение
     public static final String CONNECTION_PROP_NAME = "connection";           // соединение
     public static final String EVENT_PROP_NAME = "event";                     // событие
-    public static final String LOG_LEVEL_PROP_NAME = "level";                 // важность
+    public static final String LOG_LEVEL_PROP_NAME = "level";                 // уровень события (важность)
     public static final String COMMENT_PROP_NAME = "comment";                 // комментарий
     public static final String METADATA_PROP_NAME = "metadata";               // метаданные
     public static final String DATA_VALUE_PROP_NAME = "data";                 // данные
     public static final String DATA_PRESENTATION_PROP_NAME = "presentation";  // представление данных
     public static final String SERVER_PROP_NAME = "server";                   // сервер
-    public static final String MAIN_PORT_PROP_NAME = "mainport";              // основной порт
-    public static final String ADDITIONAL_PORT_PROP_NAME = "addport";         // вспомогательный порт
+    public static final String MAIN_PORT_PROP_NAME = "port";                  // основной порт
+    public static final String ADDITIONAL_PORT_PROP_NAME = "syncport";        // вспомогательный порт
     public static final String SESSION_PROP_NAME = "session";                 // сеанс
     public static final String ADDITIONAL_DATA_PROP_NAME = "raw";             // дополнительные данные (массив)
-    public static final String DATA_DIVIDER_PROP_NAME = "divider";            // разделитель данных (?)
+    public static final String DATA_DIVIDER_PROP_NAME = "sdseparator";        // разделитель данных
 
     private static final byte MODE_RECORD_TERMINATE = 0;                      // чтение окончания записи
     private static final byte MODE_RECORD_BEGIN_EXPECTED = 1;                 // ожидается начало записи
@@ -100,6 +113,12 @@ public class OneCRLParser implements LogParser {
     private final HashSet usedServers;
     private final HashSet usedMainPorts;
     private final HashSet usedAdditionalPorts;
+    
+    private final HashMap<Object, Integer> tDict;     // кэш данных транзакций для преобразования в коды выгрузки
+    private final HashMap<String, String> tIdModel;   // шаблон объекта, описывающего идентификатор транзакции
+    
+    private String prevTdata = null; // для ускорения преобразования данных транзакции в идентификатор транзакции
+    private String prevTid = null;   // для ускорения преобразования данных транзакции в идентификатор транзакции
     
     private byte icc = 0;  // текущий однобайтный UTF-символ
     
@@ -204,6 +223,9 @@ public class OneCRLParser implements LogParser {
         usedServers = new HashSet();
         usedMainPorts = new HashSet();
         usedAdditionalPorts = new HashSet();
+        
+        tDict = new HashMap();
+        tIdModel = new HashMap<>();
     }
     
 
@@ -239,6 +261,27 @@ public class OneCRLParser implements LogParser {
         usedServers.clear();
         usedMainPorts.clear();
         usedAdditionalPorts.clear();
+    }
+    
+    
+    public String convertToTransactionId(String tdata) {
+        // {24517ce81d1c0,3d}
+        if (tdata.equals(prevTdata)) {
+            return prevTid;
+        }
+        if (!tdata.startsWith("{") || !tdata.endsWith("}")) {
+            return tdata;
+        }
+        int c = tdata.indexOf(',');
+        if (c < 0) {
+            return tdata;
+        }
+        String hexDate = tdata.substring(1, c);
+        String hexOffset = tdata.substring(c + 1, tdata.length() - 1);
+        prevTid = String.format("%s (%d)",
+                DATE_FORMAT.format(new Date((Long.parseLong(hexDate, 16) / 10) - TIME_BASE)),
+                Integer.parseInt(hexOffset, 16));
+        return prevTid;
     }
     
     
@@ -355,7 +398,31 @@ public class OneCRLParser implements LogParser {
             switch (kv) {
                 case 0: k = DATE_PROP_NAME; break;
                 case 1: k = TRANSACTION_STATE_PROP_NAME; break;
-                case 2: k = TRANSACTION_DATA_PROP_NAME; break;
+                case 2: 
+                    k = TRANSACTION_ID;
+                    if ("{0,0}".equals(vo)) {
+                        vo = "0";
+                    }
+                    else if (compact) {
+                        Integer idx = tDict.get(vo);
+                        if (idx == null) {
+                            idx = tDict.size() + 1;
+                            tDict.put(vo, idx);
+                            String tid = convertToTransactionId((String) vo);
+                            tIdModel.put("index", idx.toString());
+                            tIdModel.put("value", (String) vo);
+                            tIdModel.put("presentation", tid);
+                        //  tIdModel.put("decimal", tid.replaceAll("[\\.: ()]", ""));
+                            vo = tIdModel;
+                        }
+                        else {
+                            vo = idx.toString();
+                        }
+                    }
+                    else {
+                        vo = convertToTransactionId((String) vo);
+                    }
+                    break;
                 case 3: 
                     k = USER_PROP_NAME;
                     if (compact) {
