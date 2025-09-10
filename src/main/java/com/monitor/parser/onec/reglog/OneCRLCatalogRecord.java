@@ -15,26 +15,29 @@
  */
 package com.monitor.parser.onec.reglog;
 
+import java.util.HashMap;
+
 /**
  *
  * @author Cube
  */
-public class OneCRLCatalogRecord {
+public class OneCRLCatalogRecord extends HashMap<String, String> {
     
     private String index;
     private String value;
     private String presentation;
 
     public OneCRLCatalogRecord(String index, String value, String presentation) {
+        put("index", index);
+        put("value", value);
+        put("presentation", presentation);
         this.index = index;
         this.value = value;
         this.presentation = presentation;
     }
     
     public OneCRLCatalogRecord(String index, String value) {
-        this.index = index;
-        this.value = value;
-        this.presentation = value;
+        this(index, value, value);
     }
 
     @Override
@@ -48,6 +51,7 @@ public class OneCRLCatalogRecord {
 
     public void setIndex(String index) {
         this.index = index;
+        put("index", index);
     }
 
     public String getValue() {
@@ -56,6 +60,7 @@ public class OneCRLCatalogRecord {
 
     public void setValue(String value) {
         this.value = value;
+        put("value", value);
     }
 
     public String getPresentation() {
@@ -64,6 +69,7 @@ public class OneCRLCatalogRecord {
 
     public void setPresentation(String presentation) {
         this.presentation = presentation;
+        put("presentation", presentation);
     }
     
     

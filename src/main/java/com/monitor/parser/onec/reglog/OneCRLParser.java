@@ -68,7 +68,7 @@ public class OneCRLParser implements LogParser {
     public static final String DATA_PRESENTATION_PROP_NAME = "presentation";  // представление данных
     public static final String SERVER_PROP_NAME = "server";                   // сервер
     public static final String MAIN_PORT_PROP_NAME = "port";                  // основной порт
-    public static final String ADDITIONAL_PORT_PROP_NAME = "syncport";        // вспомогательный порт
+    public static final String SYNC_PORT_PROP_NAME = "syncport";              // вспомогательный порт
     public static final String SESSION_PROP_NAME = "session";                 // сеанс
     public static final String ADDITIONAL_DATA_PROP_NAME = "raw";             // дополнительные данные (массив)
     public static final String DATA_DIVIDER_PROP_NAME = "sdseparator";        // разделитель данных
@@ -111,8 +111,6 @@ public class OneCRLParser implements LogParser {
     private final HashSet usedEvents;
     private final HashSet usedMetadata;
     private final HashSet usedServers;
-    private final HashSet usedMainPorts;
-    private final HashSet usedAdditionalPorts;
     
     private final HashMap<Object, Integer> tDict;     // кэш данных транзакций для преобразования в коды выгрузки
     private final HashMap<String, String> tIdModel;   // шаблон объекта, описывающего идентификатор транзакции
@@ -184,15 +182,17 @@ public class OneCRLParser implements LogParser {
     private static class KeyValuesRecord {
         private static final int MAX_RECORDS = 64;
         public final KeyValueBounds[] kv = new KeyValueBounds[MAX_RECORDS];
-        public final OneCRLRecord lr = new OneCRLRecord();
-        public long endsAt = 0;                           // позиция конца записи в файле
-        public long startsAt = 0;                         // позиция начала записи в файле
-        public boolean isEmpty = true;                    // содержит ли записи
+        public final OneCRLRecord lr = new OneCRLRecord();  // хранит запись лога в режиме "compact"/"не compact"
+        public final OneCRLRecord flr = new OneCRLRecord(); // хранит запись лога в режиме "не compact"
+        public long endsAt = 0;                             // позиция конца записи в файле
+        public long startsAt = 0;                           // позиция начала записи в файле
+        public boolean isEmpty = true;                      // содержит ли записи
         public KeyValuesRecord() {
             for (int i = 0; i < kv.length; i++) kv[i] = new KeyValueBounds();
         }
         public void clear() {
             lr.clear();
+            flr.clear();
             endsAt = 0;
             startsAt = 0;
             isEmpty = true;
@@ -221,8 +221,6 @@ public class OneCRLParser implements LogParser {
         usedEvents = new HashSet();
         usedMetadata = new HashSet();
         usedServers = new HashSet();
-        usedMainPorts = new HashSet();
-        usedAdditionalPorts = new HashSet();
         
         tDict = new HashMap();
         tIdModel = new HashMap<>();
@@ -259,8 +257,7 @@ public class OneCRLParser implements LogParser {
         usedEvents.clear();
         usedMetadata.clear();
         usedServers.clear();
-        usedMainPorts.clear();
-        usedAdditionalPorts.clear();
+        tDict.clear();
     }
     
     
@@ -276,6 +273,7 @@ public class OneCRLParser implements LogParser {
         if (c < 0) {
             return tdata;
         }
+        prevTdata = tdata;
         String hexDate = tdata.substring(1, c);
         String hexOffset = tdata.substring(c + 1, tdata.length() - 1);
         prevTid = String.format("%s (%d)",
@@ -301,65 +299,47 @@ public class OneCRLParser implements LogParser {
     }
     
     
-    private boolean onLogRecord(KeyValuesRecord keyValueRecord) {
-        boolean result;
+    private boolean canProceedRecord(KeyValuesRecord keyValueRecord) {
         if (filteredCount >= maxCount) {
             return false;
         }
-        if (keyValueRecord.isEmpty) {
-            return true;
-        }
-        validBytesRead = keyValueRecord.endsAt - 1;
-        OneCRLRecord logRecord = keyValueRecord.lr;
-        result = filterAndStoreRecord(logRecord);
-
-        unfilteredCount++;
-        if (unfilteredCount % gcPerRecords == 0) {
-            System.gc();
-        }
-
-        return result;
-    }
-
-    
-    public boolean filterAndStoreRecord(OneCRLRecord logRecord) {
-        try {
-            if (filter == null || filter.accept(logRecord)) {
-                filteredCount++;
-                if (addFields != null) {
-                    logRecord.putAll(addFields);
-                }
-                if (beforeStoreRecord(logRecord)) {
-                    recordsStorage.put(logRecord);
-                }
-            }
-            if (delay > 0) {
-                Thread.sleep(delay);
+        if (!keyValueRecord.isEmpty) {
+            validBytesRead = keyValueRecord.endsAt - 1;
+            unfilteredCount++;
+            if (unfilteredCount % gcPerRecords == 0) {
+                System.gc();
             }
         }
-        catch (Exception ex) {
-            OneCRLRecord message = new OneCRLRecord();
-            message.put("LOGSERIALIZEERROR", ex.getMessage());
-            try {
-                recordsStorage.put(message);
-            }
-            catch (Exception ex1) {
-                if (exception == null) exception = ex1;
-            }
-            return false;
-        }
-        return filteredCount < maxCount;
-    }
-
-    
-    public boolean beforeStoreRecord(OneCRLRecord logRecord) throws java.text.ParseException {
         return true;
     }
+
     
+    private boolean filterAccepted(KeyValuesRecord keyValueRecord) throws Exception {
+        if (keyValueRecord.isEmpty) {
+            return false;
+        }
+        OneCRLRecord logRecord = keyValueRecord.lr;
+        OneCRLRecord checkLogRecord = compact ? keyValueRecord.flr : logRecord;
+        boolean accepted = (filter == null || filter.accept(checkLogRecord));
+        if (accepted) {
+            filteredCount++;
+            if (addFields != null) {
+                logRecord.putAll(addFields);
+            }
+        }
+        if (delay > 0) {
+            Thread.sleep(delay);
+        }
+        return accepted;
+    }
+
     
     private boolean buildRecord() throws IOException {
         OneCRLRecord logrec = kvrc.lr;
         logrec.clear();
+
+        OneCRLRecord fullrec = kvrc.flr;
+        fullrec.clear();
 
         kvrc.endsAt = filePos;
         kvrc.isEmpty = (kvcc == -1);
@@ -367,13 +347,25 @@ public class OneCRLParser implements LogParser {
         logrec.put(VOLUME_PROP_NAME, volume);
         logrec.put(REFERENCE_PROP_NAME, kvrc.startsAt);
         
+        if (compact) {
+            fullrec.put(VOLUME_PROP_NAME, volume);
+            fullrec.put(REFERENCE_PROP_NAME, kvrc.startsAt);
+        }
+        
         ArrayList<Object> additionalData = null;
         if (kvcc > 18) {
             additionalData = new ArrayList<>();
             logrec.put(ADDITIONAL_DATA_PROP_NAME, additionalData);
+            if (compact) {
+                fullrec.put(ADDITIONAL_DATA_PROP_NAME, additionalData);
+            }
         }
+        
+        Integer idx = null;
+        Object user, computer, application, event, metadata, server, transaction;
+        user = computer = application = event = metadata = server = transaction = null;
 
-        Object vo;
+        Object vo, fvo;
         long fp = stream.getFilePointer();
         for (byte kv = 0; kv <= kvcc; kv++) {
             if (kv == 17) continue; // количество записей в дополнительных данных - не нужно возвращать
@@ -388,10 +380,10 @@ public class OneCRLParser implements LogParser {
                 if (l != vl) {
                     vs = vs + " (... ещё " + (vl - l) + " симв.)";
                 }
-                vo = getRidOfUnprintables(vs);
+                vo = fvo = getRidOfUnprintables(vs);
             }
             else {
-                vo = "";
+                vo = fvo = "";
             }
             
             String k;
@@ -401,21 +393,22 @@ public class OneCRLParser implements LogParser {
                 case 2: 
                     k = TRANSACTION_ID;
                     if ("{0,0}".equals(vo)) {
-                        vo = "0";
+                        vo = fvo = "0";
                     }
                     else if (compact) {
-                        Integer idx = tDict.get(vo);
+                        tIdModel.put("value", (String) vo);
+                        tIdModel.put("presentation", convertToTransactionId((String) vo));
+                    //  tIdModel.put("decimal", tid.replaceAll("[\\.: ()]", ""));
+                        idx = tDict.get(vo);
                         if (idx == null) {
                             idx = tDict.size() + 1;
-                            tDict.put(vo, idx);
-                            String tid = convertToTransactionId((String) vo);
+                            transaction = vo;
                             tIdModel.put("index", idx.toString());
-                            tIdModel.put("value", (String) vo);
-                            tIdModel.put("presentation", tid);
-                        //  tIdModel.put("decimal", tid.replaceAll("[\\.: ()]", ""));
-                            vo = tIdModel;
+                            vo = fvo = tIdModel;
                         }
                         else {
+                            tIdModel.put("index", idx.toString());
+                            fvo = tIdModel;
                             vo = idx.toString();
                         }
                     }
@@ -425,112 +418,103 @@ public class OneCRLParser implements LogParser {
                     break;
                 case 3: 
                     k = USER_PROP_NAME;
+                    fvo = catalogs.users.get(vo);
                     if (compact) {
                         if (!usedUsers.contains(vo)) {
-                            usedUsers.add(vo);
-                            vo = catalogs.users.get(vo);
+                            user = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.users.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 4:
                     k = COMPUTER_PROP_NAME;
+                    fvo = catalogs.computers.get(vo);
                     if (compact) {
                         if (!usedComputers.contains(vo)) {
-                            usedComputers.add(vo);
-                            vo = catalogs.computers.get(vo);
+                            computer = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.computers.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 5:
                     k = APPLICATION_PROP_NAME;
+                    fvo = catalogs.applications.get(vo);
                     if (compact) {
                         if (!usedApplications.contains(vo)) {
-                            usedApplications.add(vo);
-                            vo = catalogs.applications.get(vo);
+                            application = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.applications.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 6: k = CONNECTION_PROP_NAME; break;
                 case 7:
                     k = EVENT_PROP_NAME;
+                    fvo = catalogs.events.get(vo);
                     if (compact) {
                         if (!usedEvents.contains(vo)) {
-                            usedEvents.add(vo);
-                            vo = catalogs.events.get(vo);
+                            event = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.events.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 8: k = LOG_LEVEL_PROP_NAME; break;
                 case 9: k = COMMENT_PROP_NAME; break;
                 case 10:
                     k = METADATA_PROP_NAME;
+                    fvo = catalogs.metadata.get(vo);
                     if (compact) {
                         if (!usedMetadata.contains(vo)) {
-                            usedMetadata.add(vo);
-                            vo = catalogs.metadata.get(vo);
+                            metadata = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.metadata.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 11: k = DATA_VALUE_PROP_NAME; break;
                 case 12: k = DATA_PRESENTATION_PROP_NAME; break;
                 case 13:
                     k = SERVER_PROP_NAME;
+                    fvo = catalogs.servers.get(vo);
                     if (compact) {
                         if (!usedServers.contains(vo)) {
-                            usedServers.add(vo);
-                            vo = catalogs.servers.get(vo);
+                            server = vo;
+                            vo = fvo;
                         }
                     }
                     else {
-                        vo = catalogs.servers.get(vo);
+                        vo = fvo;
                     }
                     break;
                 case 14:
                     k = MAIN_PORT_PROP_NAME;
-                //  if (compact) {
-                //      if (!usedMainPorts.contains(vo)) {
-                //          usedMainPorts.add(vo);
-                //          vo = catalogs.mainPorts.get(vo);
-                //      }
-                //  }
-                //  else {
-                //      vo = catalogs.mainPorts.get(vo);
-                //  }
-                    vo = catalogs.mainPorts.get(vo);
-                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
+                    vo = fvo = catalogs.mainPorts.get(vo);
+                    if (vo != null) vo = fvo = ((OneCRLCatalogRecord) vo).getValue();
                     break;
                 case 15:
-                    k = ADDITIONAL_PORT_PROP_NAME;
-                //  if (compact) {
-                //        if (!usedAdditionalPorts.contains(vo)) {
-                //            usedAdditionalPorts.add(vo);
-                //            vo = catalogs.additionalPorts.get(vo);
-                //        }
-                //    }
-                //    else {
-                //        vo = catalogs.additionalPorts.get(vo);
-                //    }
-                    vo = catalogs.additionalPorts.get(vo);
-                    if (vo != null) vo = ((OneCRLCatalogRecord) vo).getValue();
+                    k = SYNC_PORT_PROP_NAME;
+                    vo = fvo = catalogs.additionalPorts.get(vo);
+                    if (vo != null) vo = fvo = ((OneCRLCatalogRecord) vo).getValue();
                     break;
                 case 16: k = SESSION_PROP_NAME; break;
                 default: k = kv == kvcc ? DATA_DIVIDER_PROP_NAME : "";
             }
+            
+            if (vo == null) vo = "0";
+            if (compact && fvo == null) fvo = "0";
 
             if (kv > 17 && kv < kvcc) { // добавляем в массив дополнительных данных кроме последнего элемента
                 assert additionalData != null;
@@ -538,16 +522,48 @@ public class OneCRLParser implements LogParser {
             }
             else {
                 logrec.put(k, vo);
+                if (compact) {
+                    fullrec.put(k, fvo);
+                }
                 if (DEBUG_RECORDS) { System.out.println(k + "=" + vo); }                
             }
         }
         stream.seek(fp);
         
-        // разбор журнала будет продолжен только если количество отфильтрованных записей
-        // не больше заданного количества
+        // разбор журнала будет продолжен только если количество
+        // отфильтрованных записей не больше заданного количества
         //
-        boolean continueParsing = onLogRecord(kvrc);
-        if (continueParsing) {
+        boolean continueParsing = false;
+        if (canProceedRecord(kvrc)) {
+        
+            try {
+                if (filterAccepted(kvrc)) {
+
+                    recordsStorage.put(kvrc.lr);
+
+                    if (transaction != null) tDict.put(transaction, idx);
+                    if (user != null) usedUsers.add(user);
+                    if (computer != null) usedComputers.add(computer);
+                    if (application != null) usedApplications.add(application);
+                    if (event != null) usedEvents.add(event);
+                    if (metadata != null) usedMetadata.add(metadata);
+                    if (server != null) usedServers.add(server);
+                }
+            }
+            catch (Exception ex) {
+                OneCRLRecord message = new OneCRLRecord();
+                message.put("LOGSERIALIZEERROR", ex.getMessage());
+                try {
+                    recordsStorage.put(message);
+                }
+                catch (Exception ex1) {
+                    if (exception == null) exception = ex1;
+                }
+                return false;
+            }
+            
+            continueParsing = filteredCount < maxCount;
+
             kvrc.startsAt = kvrc.endsAt;
         }
         
@@ -620,6 +636,8 @@ public class OneCRLParser implements LogParser {
         }
         finally {
             kvrc.clear();
+            tIdModel.clear();
+            clearUsedIndexes();
         }
         stream = null;
     }

@@ -46,6 +46,7 @@ public class ParserWriterStorage implements ParserRecordsStorage {
     public void put(LogRecord record) throws Exception {
         this.size++;
         writer.write(mapper.writeValueAsString(record));
+        writer.write("\n");
     //  mapper.writeValue(writer, record);
         if (size % 100 == 0) {
             writer.flush();
