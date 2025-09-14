@@ -70,6 +70,10 @@ public class TJLogConfigHandler extends DefaultResponder {
         
         try {
             
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             // получаем полное имя файла настройки логирования - logcfg.xml

@@ -46,6 +46,10 @@ public class SrvInfoHandler extends DefaultResponder {
 
         try {
 
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             String serverName = (String) parameters.get("server", null);

@@ -45,6 +45,10 @@ public class ConfigHandler extends DefaultResponder {
         
         try {
 
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             // определяем содержимое файла настройки агента; используется только если
@@ -55,7 +59,10 @@ public class ConfigHandler extends DefaultResponder {
             boolean writeConfig = !(contentJson == null || contentJson.isEmpty());
             
             if (writeConfig) {
-                Configuration config = mapper.readValue(contentJson, Configuration.class);
+                Configuration config = configManager.getConfig();
+                String token = config.getToken();
+                config = mapper.readValue(contentJson, Configuration.class);
+                config.setToken(token);   // устанавливаем в новой конфигурации текущий токен
                 config.encodePasswords(); // перед записью шифруем пароли кластера
                 configManager.setConfig(config).writeConfiguration();
                 server.initializeFileWatchers();

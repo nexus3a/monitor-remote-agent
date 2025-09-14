@@ -21,18 +21,24 @@ package com.monitor.agent.server.config;
  * - added "oneCServers"
  *
  */
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.monitor.enterprise.OneCCredentials;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Base64;
 
 import org.apache.commons.lang.builder.ToStringBuilder;
 
+@JsonInclude(Include.NON_NULL)
 public class Configuration {
 
-    private List<FilesConfig> files;
+    private List<FilesConfig> files = new ArrayList<>();
     @JsonProperty("1c servers")
-    private List<OneCServerConfig> oneCServers;
+    private List<OneCServerConfig> oneCServers = new ArrayList<>();
+    @JsonProperty(required = false)
+    private String token = null;
     
     public static final String encodeString(String string) {
         if (string.isEmpty()) {
@@ -79,6 +85,14 @@ public class Configuration {
 
     public void setOneCServers(List<OneCServerConfig> oneCServers) {
         this.oneCServers = oneCServers;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
     }
     
     public OneCInfoBaseConfig getInfoBaseById(String id) {

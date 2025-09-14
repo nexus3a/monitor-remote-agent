@@ -19,6 +19,10 @@ package com.monitor.agent.server.handler;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.monitor.agent.server.Server;
+import com.monitor.agent.server.config.Configuration;
+import com.monitor.agent.server.config.ConfigurationManager;
+import com.monitor.util.StringUtil;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response;
 import fi.iki.elonen.NanoHTTPD.Response.Status;
@@ -106,6 +110,33 @@ public abstract class DefaultResponder implements UriResponder {
                 session.getMethod().name(),
                 uri.isEmpty() ? "/" : uri,
                 section.isEmpty() ? "" : "?section=" + section);
+    }
+    
+    public boolean checkToken(RouterNanoHTTPD.UriResource uriResource) throws IOException {
+        Server server = uriResource.initParameter(Server.class);
+        if (server == null) {
+            return true;
+        }
+        ConfigurationManager configManager = server.getConfigManager();
+        Configuration config = configManager.getConfig();
+        String existingToken = config.getToken(); // хранится в encoded-виде
+        if (existingToken == null) {
+            return true;
+        }
+
+        RequestParameters params = getParameters();
+        String token = (String) params.get("token", null);
+        token = (token == null ? null : StringUtil.strip(token));
+        token = (token == null ? null : (token.isEmpty() ? null : token));
+
+        return Configuration.decodeString(existingToken).equals(token);
+    }
+    
+    public Response badTokenResponse() {
+        return NanoHTTPD.newFixedLengthResponse(
+                NanoHTTPD.Response.Status.UNAUTHORIZED,
+                NanoHTTPD.MIME_PLAINTEXT,
+                "BAD_TOKEN");
     }
 
     @Override

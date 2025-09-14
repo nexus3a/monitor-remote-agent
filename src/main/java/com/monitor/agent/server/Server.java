@@ -128,7 +128,7 @@ public class Server {
         
         httpd = new RouterNanoHTTPD(port);
         
-        httpd.addRoute("/", RootHandler.class);
+        httpd.addRoute("/", RootHandler.class, this);
         httpd.addRoute("/ping", PingHandler.class);
         httpd.addRoute("/version", VersionHandler.class);
         httpd.addRoute("/pause", PauseServerHandler.class, this);
@@ -144,6 +144,7 @@ public class Server {
         httpd.addRoute("/osprocinfo", OSProcessInfoHandler.class, this);
         httpd.addRoute("/dumpsinfo", DumpsInfoHandler.class, this);
         httpd.addRoute("/srvinfo", SrvInfoHandler.class, this);
+        httpd.addRoute("/settoken", SetTokenHandler.class, this);
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
 

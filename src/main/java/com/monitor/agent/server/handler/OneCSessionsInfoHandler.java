@@ -75,7 +75,7 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         // подключаемся api из библиотеки 1С к ras-серверу для получения данных из кластера 1С;
         // адрес и порт ras-сервера указаны в конфигурации центрального сервера, который мы уже получили
         //
-        AgentAdminConnectorFactory rasAgentConnFactory =  new AgentAdminConnectorFactory();
+        AgentAdminConnectorFactory rasAgentConnFactory = new AgentAdminConnectorFactory();
         OneCRASAgent agent = new OneCRASAgent(rasAgentConnFactory);
         
         boolean serverFound = false;
@@ -83,6 +83,11 @@ public class OneCSessionsInfoHandler extends DefaultResponder {
         boolean infoBaseFound = false;
         
         try {
+
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             String spid = (String) parameters.get("spid", null);

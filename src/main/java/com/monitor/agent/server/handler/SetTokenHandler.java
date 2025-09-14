@@ -1,7 +1,7 @@
 package com.monitor.agent.server.handler;
 
 /*
- * Copyright 2022 Aleksei Andreev
+ * Copyright 2025 Aleksei Andreev
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,15 @@ package com.monitor.agent.server.handler;
  *
 */
 
-import com.monitor.agent.server.FileState;
-import com.monitor.agent.server.FileWatcher;
-import com.monitor.agent.server.Registrar;
-import com.monitor.agent.server.Section;
 import com.monitor.agent.server.Server;
+import com.monitor.agent.server.config.Configuration;
+import com.monitor.agent.server.config.ConfigurationManager;
+import com.monitor.util.StringUtil;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
-import java.util.Collection;
 import java.util.Map;
 
-public class AckHandler extends DefaultResponder {
+public class SetTokenHandler extends DefaultResponder {
 
     @Override
     @SuppressWarnings("UseSpecificCatch")
@@ -40,39 +38,37 @@ public class AckHandler extends DefaultResponder {
         
         Server server = uriResource.initParameter(Server.class);
         server.waitForUnpause(); // ожидания снятия сервера с паузы
-        
+
         try {
 
             if (!checkToken(uriResource)) {
                 return badTokenResponse();
             }
 
-            RequestParameters parameters = getParameters();
-
-            // получаем секцию, в пределах которой нужно подтввердить получение данных
+            // если не указали параметр newtoken или он пустой, то
+            // сбрасываем токен Агента
             //
-            String sectionName = (String) parameters.get("section", null);
-            Section section = Section.byName(sectionName);
-            Object sectionLock = section == null ? server : section;
-
-            synchronized (sectionLock) {
-                
-                Collection<FileWatcher> watchers = server.getWatchers(Section.byName(sectionName));
-
-                // подтверждаем факт успешного приёма предыдущей порции данных:
-                // переустанавливаем указатели файлов в рабочее положение
-                //
-                for (FileWatcher watcher : watchers) {
-                    synchronized (watcher) {
-                        Collection<FileState> states = watcher.getWatched();
-                        for (FileState state : states) {
-                            state.setPointer(state.getNewPointer());
-                        }
-                        Registrar.writeStateToJson(watcher.getSincedbFile(), states);
-                    }
-                }
+            RequestParameters parameters = getParameters();
+            String newToken = (String) parameters.get("newtoken", null);
+            newToken = (newToken == null ? null : StringUtil.strip(newToken));
+            newToken = (newToken == null ? null : (newToken.isEmpty() ? null : newToken));
+            String encodedToken = (newToken == null ? null : Configuration.encodeString(newToken));
             
+            ConfigurationManager configManager = server.getConfigManager();
+            Configuration config = configManager.getConfig();
+            String existingToken = config.getToken();
+
+            if (existingToken != null && !existingToken.equals(encodedToken) 
+                    || encodedToken != null && !encodedToken.equals(existingToken)) {
+                config.setToken(encodedToken);
+                configManager.setConfig(config).writeConfiguration();
             }
+
+            return NanoHTTPD.newFixedLengthResponse(
+                        NanoHTTPD.Response.Status.OK,
+                        NanoHTTPD.MIME_PLAINTEXT,
+                        "OK");
+
         }
         catch (Exception ex) {
             return NanoHTTPD.newFixedLengthResponse(
@@ -81,10 +77,6 @@ public class AckHandler extends DefaultResponder {
                     ex.getLocalizedMessage());
         }
         
-        return NanoHTTPD.newFixedLengthResponse(
-                NanoHTTPD.Response.Status.OK,
-                NanoHTTPD.MIME_PLAINTEXT,
-                "OK");
     }
 
     @Override

@@ -283,6 +283,10 @@ public class AccessibilityHandler extends DefaultResponder {
 
         try {
             
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             // получаем имя секции, в пределах которой нужно анализировать каталоги

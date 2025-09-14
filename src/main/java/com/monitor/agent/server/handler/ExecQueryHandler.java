@@ -133,6 +133,10 @@ public class ExecQueryHandler extends DefaultResponder {
 
         try {
 
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             pipe = new ParserPipedStream(QUERY_EXEC_TIMEOUT);;
 
             (new Thread() {

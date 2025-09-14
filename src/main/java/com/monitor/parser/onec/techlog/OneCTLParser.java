@@ -1,39 +1,5 @@
 package com.monitor.parser.onec.techlog;
 
-
-import com.monitor.agent.server.BufferedRandomAccessFileStream;
-import com.monitor.agent.server.FileState;
-import com.monitor.agent.server.PredefinedFields;
-import com.monitor.agent.server.filter.Filter;
-import com.monitor.parser.LogParser;
-import com.monitor.parser.ParseException;
-import com.monitor.parser.ParserParameters;
-import com.monitor.parser.reader.ParserNullStorage;
-import com.monitor.parser.reader.ParserRecordsStorage;
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.RandomAccessFile;
-import java.nio.charset.Charset;
-import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 /*
  * Copyright 2024 Aleksei Andreev
  *
@@ -50,6 +16,34 @@ import java.util.regex.Pattern;
  * limitations under the License.
  */
 
+
+import com.monitor.agent.server.BufferedRandomAccessFileStream;
+import com.monitor.agent.server.FileState;
+import com.monitor.agent.server.PredefinedFields;
+import com.monitor.agent.server.filter.Filter;
+import com.monitor.parser.LogParser;
+import com.monitor.parser.ParseException;
+import com.monitor.parser.ParserParameters;
+import com.monitor.parser.reader.ParserNullStorage;
+import com.monitor.parser.reader.ParserRecordsStorage;
+import com.monitor.util.ArrayUtil;
+import com.monitor.util.FileUtil;
+import com.monitor.util.StringUtil;
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
+
 /**
  *
  * @author Алексей
@@ -64,7 +58,6 @@ public class OneCTLParser implements LogParser {
     private static final Charset UTF8 = Charset.forName("UTF-8");
     private static final long MICROSECONDS_TO_1970 = 62135596800000L * 1000L;
     private static final String SQL_PARAMETERS_PROP_MARKER = "\np_0:";
-    private static final Pattern UNPRINTABLE_PATTERN = Pattern.compile("[^\\u0009\\u000A\\u000D\\u0020-\\uD7FF\\uE000-\\uFFFD\\u10000-\\u10FFFF]");    
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss");
     private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("GMT+0");
     private static final long TIME_BASE = - Instant.parse("0001-01-01T00:00:00.00Z").toEpochMilli() * 1000;
@@ -253,60 +246,6 @@ public class OneCTLParser implements LogParser {
     private int getTokenLength;
     
     
-    public static boolean copyFile(File src, File dest, boolean rewrite) throws IOException {
-        if (dest.exists()) {
-            if (!rewrite) {
-                return false;
-            }
-            if (!dest.delete()) {
-                return false;
-            }
-        }
-        try (
-                InputStream in = new BufferedInputStream(new FileInputStream(src));
-                OutputStream out = new BufferedOutputStream(new FileOutputStream(dest))) {
-
-            byte[] buffer = new byte[1024];
-            int lengthRead;
-            while ((lengthRead = in.read(buffer)) > 0) {
-                out.write(buffer, 0, lengthRead);
-                out.flush();
-            }
-        }
-        catch (Exception ex) {
-            return false;
-        }
-        return true;
-    }
-    
-    
-    public static boolean copyFileFragment(File src, long fromPos, long toPos, File dest) throws IOException {
-        if (dest.exists()) {
-            return false;
-        }
-        try (
-                BufferedRandomAccessFileStream in = new BufferedRandomAccessFileStream(new RandomAccessFile(src, "r"), 1024);
-                OutputStream out = new BufferedOutputStream(new FileOutputStream(dest))) {
-            
-            in.seek(fromPos);
-            long bytesReadLeft = toPos - fromPos;
-
-            byte[] buffer = new byte[1024];
-            int lengthRead;
-            while ((lengthRead = in.read(buffer)) > 0 && bytesReadLeft > 0) {
-                lengthRead = (int) Math.min(lengthRead, bytesReadLeft);
-                bytesReadLeft = bytesReadLeft - lengthRead;
-                out.write(buffer, 0, lengthRead);
-                out.flush();
-            }
-        }
-        catch (Exception ex) {
-            return false;
-        }
-        return true;
-    }
-    
-    
     private static String makeParserErrorsLogDir(ParserParameters parameters) {
         String dirName = parameters.getParserErrorLog();
         String workdir = new File("").getAbsolutePath() + "/" + dirName;
@@ -315,95 +254,6 @@ public class OneCTLParser implements LogParser {
     }
 
 
-    private String right(String str, int count) {
-        return str.substring(str.length() - count);
-    }
-
-    
-    private int indexOfNonWhitespace(byte[] value) {
-        int length = value.length;
-        int left = 0;
-        while (left < length) {
-            char ch = (char) (value[left] & 0xff);
-            if (ch != ' ' && ch != '\t' && !Character.isWhitespace(ch)) {
-                break;
-            }
-            left++;
-        }
-        return left;
-    }
-
-    
-    private int lastIndexOfNonWhitespace(byte[] value) {
-        int length = value.length;
-        int right = length;
-        while (0 < right) {
-            char ch = (char) (value[right - 1] & 0xff);
-            if (ch != ' ' && ch != '\t' && !Character.isWhitespace(ch)) {
-                break;
-            }
-            right--;
-        }
-        return right;
-    }
-
-    
-    private String strip(String value) {
-        byte[] btvalue = value.getBytes(UTF8);
-        int left = indexOfNonWhitespace(btvalue);
-        if (left == btvalue.length) {
-            return "";
-        }
-        int right = lastIndexOfNonWhitespace(btvalue);
-        return ((left > 0) || (right < btvalue.length)) ? new String(btvalue, left, right - left, UTF8) : value;
-    }
-
-    
-    protected String lastLine(String str) {
-        int markerPos = str.length();
-        while (true) {
-            while (--markerPos >= 0 && str.charAt(markerPos) == '\n') {
-            }
-            if (markerPos < 0) {
-                return "";
-            }
-            int last = markerPos;
-            markerPos = str.lastIndexOf('\n', last) + 1;
-            String result = strip(str.substring(markerPos, last + 1));
-            if (!result.isEmpty()) {
-                return result;
-            }
-        }
-    }
-
-    
-    @SuppressWarnings("ManualArrayToCollectionCopy")
-    private String[] uniqueArray(String str) {
-        if (!str.contains(",")) {
-            String[] result = new String[1];
-            result[0] = str;
-            return result;
-        }
-        String[] splitted = str.replaceAll("['\"]", "").split(",");
-        HashSet<String> set = new HashSet(splitted.length);
-        for (String s : splitted) {
-            set.add(s);
-        }
-        if (set.size() == splitted.length) {
-            return splitted;
-        }
-        String[] result = new String[set.size()];
-        set.toArray(result);
-        return result;
-    }
-    
-    
-    private String getRidOfUnprintables(String str) {
-        Matcher matcher = UNPRINTABLE_PATTERN.matcher(str);
-        return matcher.replaceAll("?");
-    }
-
-    
     @Override
     public void setRecordsStorage(ParserRecordsStorage storage) {
         this.recordsStorage = storage;
@@ -1273,7 +1123,7 @@ public class OneCTLParser implements LogParser {
                 switch (k) {
                     case CONTEXT_PROP_NAME:
                         kvrc.context = vs;
-                        String lastline = lastLine(vs);
+                        String lastline = StringUtil.lastLine(vs);
                         logrec.put(CONTEXT_LAST_LINE_PROP_NAME, lastline);
                         logrec.put(CONTEXT_LAST_LINE_HASH_PROP_NAME, lastline.hashCode());
                         if (DEBUG_RECORDS) {
@@ -1305,13 +1155,13 @@ public class OneCTLParser implements LogParser {
                         logrec.escalating = true;
                         break;
                     case WAIT_CONNECTIONS_PROP_NAME:
-                        vo = uniqueArray(vs);
+                        vo = ArrayUtil.uniqueArray(vs);
                         break;
                     case LKSRC_PROP_NAME:
-                        vo = uniqueArray(vs);
+                        vo = ArrayUtil.uniqueArray(vs);
                         break;
                     default:
-                        vo = getRidOfUnprintables(vs);
+                        vo = StringUtil.getRidOfUnprintables(vs);
                         break;
                 }
                 logrec.put(k, vo);
@@ -1408,7 +1258,7 @@ public class OneCTLParser implements LogParser {
                         state.getFile().getName(),
                         kvrp.bytesRead - 1,
                         filePos));
-                copyFileFragment(state.getFile(), 
+                FileUtil.copyFileFragment(state.getFile(), 
                         kvrp.bytesRead - 1,
                         filePos + 256, // в лог-файл с фрагментом ошибки запишем ещё несколько символов после ошибки
                         errorFragmentFile);
@@ -1445,10 +1295,10 @@ public class OneCTLParser implements LogParser {
         int day = isTJName ? Integer.parseInt(fileName.substring(4, 6)) : 1;
         int hour = isTJName ? Integer.parseInt(fileName.substring(6, 8)) : 0;
         
-        syear = right("0000" + year, 4);
-        smonth = right("00" + month, 2);
-        sday = right("00" + day, 2);
-        shours = right("00" + hour, 2);
+        syear = StringUtil.right("0000" + year, 4);
+        smonth = StringUtil.right("00" + month, 2);
+        sday = StringUtil.right("00" + day, 2);
+        shours = StringUtil.right("00" + hour, 2);
         yyyyMMddhh = syear + smonth + sday + shours;
 
         Calendar calendar = new GregorianCalendar(TIME_ZONE);

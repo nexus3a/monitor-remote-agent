@@ -40,22 +40,26 @@ public class OSProcessInfoHandler extends DefaultResponder {
 
         super.get(uriResource, urlParams, session);
         
-        ConsoleParser consoleParser;
-
-        String os = System.getProperty("os.name").toLowerCase();
-        if (os.startsWith("win")) {
-            consoleParser = new WindowsProcessesParser();
-        }
-        else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
-            consoleParser = new LinuxProcessesParser();
-        }
-        else {
-            consoleParser = new EmptyProcessesParser();
-        }
-        
-        ObjectMapper mapper = new ObjectMapper();
-
         try {
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
+            ConsoleParser consoleParser;
+
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.startsWith("win")) {
+                consoleParser = new WindowsProcessesParser();
+            }
+            else if (os.contains("nix") || os.contains("nux") || os.contains("aix")) {
+                consoleParser = new LinuxProcessesParser();
+            }
+            else {
+                consoleParser = new EmptyProcessesParser();
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+
             Object result = consoleParser.parse();
             return NanoHTTPD.newFixedLengthResponse(
                     Response.Status.OK,

@@ -44,6 +44,10 @@ public class WatchMapHandler extends DefaultResponder {
 
         try {
 
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
 
             // получаем имя секции, в пределах которой нужно получить данные об отслеживаемых файлах

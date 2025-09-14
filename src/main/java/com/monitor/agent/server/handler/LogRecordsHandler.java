@@ -62,6 +62,10 @@ public class LogRecordsHandler extends DefaultResponder {
 
         try {
 
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             pipe = new ParserPipedStream(PARSE_EXEC_TIMEOUT);
             server.getExecutor().execute(() -> {
             

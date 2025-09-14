@@ -1,5 +1,21 @@
 package com.monitor.parser.onec.reglog;
 
+/*
+ * Copyright 2025 Aleksei Andreev
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 
 import com.monitor.agent.server.BufferedRandomAccessFileStream;
 import com.monitor.agent.server.FileState;
@@ -10,6 +26,8 @@ import com.monitor.parser.ParseException;
 import com.monitor.parser.ParserParameters;
 import com.monitor.parser.reader.ParserNullStorage;
 import com.monitor.parser.reader.ParserRecordsStorage;
+import com.monitor.util.FileUtil;
+import com.monitor.util.StringUtil;
 
 import java.io.*;
 import java.nio.charset.Charset;
@@ -20,8 +38,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.TimeZone;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 
 public class OneCRLParser implements LogParser {
@@ -32,7 +48,6 @@ public class OneCRLParser implements LogParser {
     private static final int STREAM_BUFFER_SIZE = 1024 * 1024 * 2; // 2Mb 
 
     private static final Charset UTF8 = Charset.forName("UTF-8");
-    private static final Pattern UNPRINTABLE_PATTERN = Pattern.compile("[^\\u0009\\u000A\\u000D\\u0020-\\uD7FF\\uE000-\\uFFFD\\u10000-\\u10FFFF]");    
     private static final long GC_PER_RECORDS = 10000L;
     private static final long TIME_BASE = - Instant.parse("0001-01-01T00:00:00.00Z").toEpochMilli();
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
@@ -129,33 +144,6 @@ public class OneCRLParser implements LogParser {
     private byte kvcc;                       // количество-1 прочитанных пар ключ-значение в текущей записи лога kvrc
     
 
-    public static boolean copyFileFragment(File src, long fromPos, long toPos, File dest) throws IOException {
-        if (dest.exists()) {
-            return false;
-        }
-        try (
-                BufferedRandomAccessFileStream in = new BufferedRandomAccessFileStream(new RandomAccessFile(src, "r"), 1024);
-                OutputStream out = new BufferedOutputStream(new FileOutputStream(dest))) {
-            
-            in.seek(fromPos);
-            long bytesReadLeft = toPos - fromPos;
-
-            byte[] buffer = new byte[1024];
-            int lengthRead;
-            while ((lengthRead = in.read(buffer)) > 0 && bytesReadLeft > 0) {
-                lengthRead = (int) Math.min(lengthRead, bytesReadLeft);
-                bytesReadLeft = bytesReadLeft - lengthRead;
-                out.write(buffer, 0, lengthRead);
-                out.flush();
-            }
-        }
-        catch (Exception ex) {
-            return false;
-        }
-        return true;
-    }
-    
-    
     private static String makeParserErrorsLogDir(ParserParameters parameters) {
         String dirName = parameters.getParserErrorLog();
         String workdir = new File("").getAbsolutePath() + "/" + dirName;
@@ -164,12 +152,6 @@ public class OneCRLParser implements LogParser {
     }
 
 
-    private String getRidOfUnprintables(String str) {
-        Matcher matcher = UNPRINTABLE_PATTERN.matcher(str);
-        return matcher.replaceAll("?");
-    }
-
-    
     private static class KeyValueBounds {
         public long kb = 0;
         public long ke = 0;
@@ -380,7 +362,7 @@ public class OneCRLParser implements LogParser {
                 if (l != vl) {
                     vs = vs + " (... ещё " + (vl - l) + " симв.)";
                 }
-                vo = fvo = getRidOfUnprintables(vs);
+                vo = fvo = StringUtil.getRidOfUnprintables(vs);
             }
             else {
                 vo = fvo = "";
@@ -619,7 +601,7 @@ public class OneCRLParser implements LogParser {
                         state.getFile().getName(),
                         kvrc.startsAt - 1,
                         filePos));
-                copyFileFragment(state.getFile(), 
+                FileUtil.copyFileFragment(state.getFile(), 
                         kvrc.startsAt - 1,
                         filePos + 256, // в лог-файл с фрагментом ошибки запишем ещё несколько символов после ошибки
                         errorFragmentFile);

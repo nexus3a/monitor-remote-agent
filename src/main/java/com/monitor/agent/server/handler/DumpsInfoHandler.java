@@ -85,6 +85,10 @@ public class DumpsInfoHandler extends DefaultResponder {
 
         try {
         
+            if (!checkToken(uriResource)) {
+                return badTokenResponse();
+            }
+
             RequestParameters parameters = getParameters();
             boolean ack = !"false".equalsIgnoreCase((String) parameters.get("ack", "false"));
             String sectionName = (String) parameters.get("section", (String) null);
