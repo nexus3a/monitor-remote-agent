@@ -55,28 +55,6 @@ public class OneCSrvInfoParser implements LogParser {
     private final static byte LEFT_CURLY_BRACKET = 123;
     private final static byte RIGHT_CURLY_BRACKET = 125;
     
-    public static final String VOLUME_PROP_NAME = "volume";                   // том данных (имя лог-файла)
-    public static final String REFERENCE_PROP_NAME = "ref";                   // ссылка на запись, позиция в файле
-    public static final String DATE_PROP_NAME = "date";                       // дата события
-    public static final String TRANSACTION_STATE_PROP_NAME = "tstate";        // состояние транзакции
-    public static final String TRANSACTION_DATA_PROP_NAME = "tdata";          // данные транзакции - момент и смещение в логе
-    public static final String USER_PROP_NAME = "user";                       // пользователь
-    public static final String COMPUTER_PROP_NAME = "computer";               // компьютер
-    public static final String APPLICATION_PROP_NAME = "application";         // приложение
-    public static final String CONNECTION_PROP_NAME = "connection";           // соединение
-    public static final String EVENT_PROP_NAME = "event";                     // событие
-    public static final String LOG_LEVEL_PROP_NAME = "level";                 // важность
-    public static final String COMMENT_PROP_NAME = "comment";                 // комментарий
-    public static final String METADATA_PROP_NAME = "metadata";               // метаданные
-    public static final String DATA_VALUE_PROP_NAME = "data";                 // данные
-    public static final String DATA_PRESENTATION_PROP_NAME = "presentation";  // представление данных
-    public static final String SERVER_PROP_NAME = "server";                   // сервер
-    public static final String MAIN_PORT_PROP_NAME = "mainport";              // основной порт
-    public static final String ADDITIONAL_PORT_PROP_NAME = "addport";         // вспомогательный порт
-    public static final String SESSION_PROP_NAME = "session";                 // сеанс
-    public static final String ADDITIONAL_DATA_PROP_NAME = "raw";             // дополнительные данные (массив)
-    public static final String DATA_DIVIDER_PROP_NAME = "divider";            // разделитель данных (?)
-
     private static final byte MODE_UNKNOWN = 0;                               // первый вызов парсера
     private static final byte MODE_RECORD_TERMINATE = 1;                      // чтение окончания записи
     private static final byte MODE_RECORD_BEGIN_EXPECTED = 2;                 // ожидается начало записи
@@ -109,10 +87,10 @@ public class OneCSrvInfoParser implements LogParser {
     
     private byte icc = 0;  // текущий однобайтный UTF-символ
     
-                                             // Key-Value Record - номера позиций файла с началом и окончанием 
-                                             // ключа и значения для одной записи лога; предполагаем, что количество
-                                             // пар ключ-значение в одной записи не более 64
-    
+    // Key-Value Record - номера позиций файла с началом и окончанием 
+    // ключа и значения для одной записи лога; предполагаем, что количество
+    // пар ключ-значение в одной записи не более 64
+    //
     private KeyValuesRecord kvrc = new KeyValuesRecord();
 
 
@@ -129,8 +107,8 @@ public class OneCSrvInfoParser implements LogParser {
         public long ke = 0;
         public long vb = 0;
         public long ve = 0;
-        public String vv = null;           // значение строкой
-        public KeyValuesRecord kvr = null; // если value не простое значение, а вложенный объект
+        public String vv = null;                          // значение строкой
+        public KeyValuesRecord kvr = null;                // если value не простое значение, а вложенный объект
         boolean isSimple() { return kvr == null; }
         boolean isComplex() { return kvr != null; }
         String getValue() { return vv; }
@@ -330,15 +308,26 @@ public class OneCSrvInfoParser implements LogParser {
         for (int ci = 1; ci <= clusters.count; ci++) { // первое значение пропускаем - там количество кластеров
             clustersValues.add(buildClusterValue(clusters.getComplex(ci)));
         }
+        logrec.put("clusters", clustersValues);
         
-        KeyValuesRecord clusters1 = kvrecord.getComplex(1);
+        ArrayList<OneCSrvInfoRecord> adminsValues = new ArrayList();
+        KeyValuesRecord admins = kvrecord.getComplex(1); // администраторы сервера
+        for (int ci = 1; ci <= admins.count; ci++) { // первое значение пропускаем - там количество администраторов
+            OneCSrvInfoRecord adminValue = new OneCSrvInfoRecord();
+            adminsValues.add(adminValue);
+            KeyValuesRecord admin = admins.getComplex(ci);
+            adminValue.put("name", admin.getSimple(0));
+            adminValue.put("description", admin.getSimple(1));
+            String admin2 = admin.getSimple(2); // ?
+            adminValue.put("password-hash", admin.getSimple(3));
+            adminValue.put("os-user", admin.getSimple(4));
+            adminValue.put("auth-by-password", admin.getSimple(5).equals("1") || admin.getSimple(5).equals("3"));
+            adminValue.put("auth-by-os", admin.getSimple(5).equals("2") || admin.getSimple(5).equals("3"));
+        }
+        logrec.put("admins", adminsValues);
+
         String clusters2 = kvrecord.getSimple(2);
         String clusters3 = kvrecord.getSimple(3);
-        
-        logrec.put("clusters", clustersValues);
-        logrec.put("field1", new ArrayList());
-        logrec.put("field2", clusters2);
-        logrec.put("field3", clusters3);
         
         if (DEBUG_RECORDS) { System.out.println(logrec); }                
     }
@@ -582,6 +571,7 @@ public class OneCSrvInfoParser implements LogParser {
                             break;
                         case MODE_VALUE_IQM_COMMA_OR_QM_EXPECTED:
                             kvc.ve = firstBytePos - 1;            // зафиксировать конец значения (-1)
+                            recfinished = true;
                             mode = MODE_VALUE_EXPECTED;
                             break;
                         case MODE_VALUE_EXPECTED:
