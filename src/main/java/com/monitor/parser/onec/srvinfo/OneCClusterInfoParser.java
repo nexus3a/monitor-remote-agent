@@ -132,7 +132,7 @@ public class OneCClusterInfoParser extends OneCSrvInfoParser {
         KeyValuesRecord managers = kvrecord.getComplex(6); // менеджеры кластера
         for (int ci = 1; ci <= managers.count; ci++) { // первое значение пропускаем - там количество менеджеров
             OneCSrvInfoRecord managerValue = new OneCSrvInfoRecord();
-            adminsValues.add(managerValue);
+            managersValues.add(managerValue);
             KeyValuesRecord manager = managers.getComplex(ci);
             managerValue.put("uuid", manager.getSimple(0));
             managerValue.put("description", manager.getSimple(1));
