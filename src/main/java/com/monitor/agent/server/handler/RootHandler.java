@@ -50,13 +50,16 @@ public class RootHandler extends DefaultResponder {
                     + "(get)/sessionsinfo : show cluster's sessions info\n"
                     + "(get)/tjlogconfig : show tech-journal config content\n"
                     + "(post)/tjlogconfig : write tech-journal config content\n"
-                    + "(get)/execquery?query=<query-text>&connection=<jdbc-cnn-string>&user=<db-user-name>&pass=<db-user-password> : return query resultset\n"
                     + "(get)/osprocinfo : return 1c os processes ports and pids\n"
                     + "(get)/dumpsinfo : return dump files list\n"
                     + "(get)/srvinfo?[server=<server-name>]&[catalog=<srvinfo-catalog>] : return server info\n"
                     + "(get)/settoken?newtoken=<access-token> : setup access token\n"
                     ;
 
+            if (Class.forName("com.monitor.agent.server.handler.ExecQueryHandler") != null) {
+                message = message
+                        + "(get)/execquery?query=<query-text>&connection=<jdbc-cnn-string>&user=<db-user-name>&pass=<db-user-password> : return query resultset\n";
+            }
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.OK,
                     NanoHTTPD.MIME_PLAINTEXT,

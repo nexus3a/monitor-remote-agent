@@ -140,13 +140,17 @@ public class Server {
         httpd.addRoute("/ack", AckHandler.class, this);
         httpd.addRoute("/sessionsinfo", OneCSessionsInfoHandler.class, this);
         httpd.addRoute("/tjlogconfig", TJLogConfigHandler.class, this);
-        httpd.addRoute("/execquery", ExecQueryHandler.class, this);
         httpd.addRoute("/osprocinfo", OSProcessInfoHandler.class, this);
         httpd.addRoute("/dumpsinfo", DumpsInfoHandler.class, this);
         httpd.addRoute("/srvinfo", SrvInfoHandler.class, this);
         httpd.addRoute("/settoken", SetTokenHandler.class, this);
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
+        
+        Class execQueryClass = Class.forName("com.monitor.agent.server.handler.ExecQueryHandler");
+        if (execQueryClass != null) {
+            httpd.addRoute("/execquery", execQueryClass, this);
+        }
 
         logger.info("server start");
         secure = Files.exists(Paths.get(SERVER_JKS_NAME));

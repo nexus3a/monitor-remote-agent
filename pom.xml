@@ -11,6 +11,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>1.8</maven.compiler.source>
         <maven.compiler.target>1.8</maven.compiler.target>
+        <app.signer.directory>d:/java/projects/monitor-remote-agent-signer</app.signer.directory>
     </properties>
     <licenses>
         <license>
@@ -20,6 +21,7 @@
             <comments>A business-friendly OSS license</comments>
         </license>
     </licenses>
+    
     <build>
         <finalName>${project.artifactId}-${project.version}</finalName>
         <plugins>
@@ -62,8 +64,44 @@
                     <debug>true</debug>
                 </configuration>
             </plugin>
+    
+            <plugin> <!-- необязательный плагин для подписи jar -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <move file="${project.build.directory}/${project.build.finalName}-with-deps.jar"
+                                      tofile="${project.build.directory}/${project.artifactId}.jar"/>
+                                <exec executable="java" failonerror="true">
+                                    <arg value="-jar"/>
+                                    <arg value="${app.signer.directory}/monitor-remote-agent-signer.jar"/>
+                                    <arg value="-sign"/>
+                                    <arg value="${project.build.directory}/${project.artifactId}.jar"/>
+                                    <arg value="${app.signer.directory}/private.key"/>
+                                    <arg value="${app.signer.directory}/public.key"/>
+                                </exec>
+                                <move file="${project.build.directory}/${project.artifactId}.jar"
+                                      tofile="${project.build.directory}/${project.build.finalName}.jar"/>
+                                <copy file="${project.build.directory}/${project.build.finalName}.jar"
+                                      tofile="${project.build.directory}/${project.build.finalName}-with-deps.jar"/>
+                                <zip destfile="${project.build.directory}/${project.build.finalName}.zip"
+                                     basedir="${project.build.directory}"
+                                     includes="${project.build.finalName}.jar"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
     <dependencies>
         <dependency>
             <groupId>org.nanohttpd</groupId>
@@ -86,14 +124,12 @@
             <version>4.13.2</version>
             <scope>test</scope>
         </dependency>
-
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
             <version>1.3.14</version>
             <scope>compile</scope>
         </dependency>
-
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
@@ -144,15 +180,54 @@
             <artifactId>netty</artifactId>
             <version>3.2.10.Final</version>
         </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <version>42.7.4</version>
-        </dependency>
-        <dependency>
-            <groupId>com.microsoft.sqlserver</groupId>
-            <artifactId>mssql-jdbc</artifactId>
-            <version>12.8.1.jre8</version>
-        </dependency>
     </dependencies>
+
+    <profiles>
+    
+        <profile>
+            <id>no-execquery</id>
+        </profile>
+
+        <profile>
+            <id>default</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>add-source</goal>
+                                </goals>
+                                <configuration>
+                                    <sources>
+                                        <source>src/main/java-execquery</source>
+                                    </sources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>org.postgresql</groupId>
+                    <artifactId>postgresql</artifactId>
+                    <version>42.7.4</version>
+                </dependency>
+                <dependency>
+                    <groupId>com.microsoft.sqlserver</groupId>
+                    <artifactId>mssql-jdbc</artifactId>
+                    <version>12.8.1.jre8</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+    </profiles>
 </project>
