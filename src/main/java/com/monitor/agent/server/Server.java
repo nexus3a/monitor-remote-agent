@@ -147,9 +147,11 @@ public class Server {
         httpd.addRoute(stopRoute, StopServerHandler.class, this);
         httpd.setNotFoundHandler(NotFoundHandler.class);
         
-        Class execQueryClass = Class.forName("com.monitor.agent.server.handler.ExecQueryHandler");
-        if (execQueryClass != null) {
+        try {
+            Class execQueryClass = Class.forName("com.monitor.agent.server.handler.ExecQueryHandler");
             httpd.addRoute("/execquery", execQueryClass, this);
+        }
+        catch (ClassNotFoundException ex) {
         }
 
         logger.info("server start");

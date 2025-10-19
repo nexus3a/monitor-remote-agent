@@ -56,10 +56,14 @@ public class RootHandler extends DefaultResponder {
                     + "(get)/settoken?newtoken=<access-token> : setup access token\n"
                     ;
 
-            if (Class.forName("com.monitor.agent.server.handler.ExecQueryHandler") != null) {
+            try {
+                Class.forName("com.monitor.agent.server.handler.ExecQueryHandler");
                 message = message
                         + "(get)/execquery?query=<query-text>&connection=<jdbc-cnn-string>&user=<db-user-name>&pass=<db-user-password> : return query resultset\n";
             }
+            catch (ClassNotFoundException ex) {
+            }
+            
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.OK,
                     NanoHTTPD.MIME_PLAINTEXT,
