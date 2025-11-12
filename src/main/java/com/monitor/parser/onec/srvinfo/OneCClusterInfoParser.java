@@ -14,7 +14,7 @@ public class OneCClusterInfoParser extends OneCSrvInfoParser {
 
         OneCSrvInfoRecord logrec = kvrecord.lr;
         logrec.clear();
-        byte kvreclength = kvrecord.count;
+        int kvreclength = kvrecord.count;
         
         if (kvreclength < 2) {
             return;
@@ -115,7 +115,7 @@ public class OneCClusterInfoParser extends OneCSrvInfoParser {
             serverValue.put("number-of-connections-per-process", server.getSimple(11)); // количество соединений на процесс
             String server12 = server.getSimple(12);
             String server13 = server.getSimple(13);
-            serverValue.put("manager-for-aech-service", "1".equals(server.getSimple(14)) ? "true" : "false"); // менеджер под каждый сервис (булево)
+            serverValue.put("manager-for-each-service", "1".equals(server.getSimple(14)) ? "true" : "false"); // менеджер под каждый сервис (булево)
             String server15 = server.getSimple(15);
             String server16 = server.getSimple(16);
             serverValue.put("central-server", "1".equals(server.getSimple(17)) ? "true" : "false"); // центральный сервер

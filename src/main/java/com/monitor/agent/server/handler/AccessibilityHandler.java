@@ -24,6 +24,8 @@ import com.monitor.agent.server.Server;
 import com.monitor.agent.server.config.ConfigurationManager;
 import com.monitor.agent.server.config.FilesConfig;
 import com.monitor.agent.server.config.OneCServerConfig;
+import com.monitor.util.FileUtil;
+import com.monitor.util.StringUtil;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
 import java.io.File;
@@ -37,6 +39,7 @@ import org.apache.commons.io.FilenameUtils;
 
 public class AccessibilityHandler extends DefaultResponder {
     
+    private static final String LOGCFG_FILE_NAME = "logcfg.xml";
     private static final String TEST_FILE_NAME = ".monitor-remote-agent-test";
     private static final String AGENT_WORKDIR_MASK = "\\$\\{agent-path\\}";
     private static final String AGENT_CONFIG_MASK = "\\$\\{agent-config\\}";
@@ -199,15 +202,16 @@ public class AccessibilityHandler extends DefaultResponder {
 
     private static PathCheckResult checkPath(String directoryName, String testFileName) {
         
+        String dirName = FileUtil.cutSeparator(directoryName);
         PathCheckResult result = new PathCheckResult();
-        result.path = FilenameUtils.separatorsToSystem(directoryName + "/" + testFileName);
+        result.path = FilenameUtils.separatorsToSystem(dirName + "/" + testFileName);
         try {
             
             boolean testFileNameIsWild = testFileName.isEmpty() 
                     || (testFileName.contains("*") 
                     || testFileName.contains("?"));
 
-            File directory = new File(directoryName);
+            File directory = new File(dirName);
             result.exists = directory.exists();
 
             if (!result.exists) {
@@ -286,7 +290,7 @@ public class AccessibilityHandler extends DefaultResponder {
             if (!checkToken(uriResource)) {
                 return badTokenResponse();
             }
-
+            
             RequestParameters parameters = getParameters();
 
             // получаем имя секции, в пределах которой нужно анализировать каталоги
@@ -316,15 +320,19 @@ public class AccessibilityHandler extends DefaultResponder {
                         mapper.writerWithDefaultPrettyPrinter().writeValueAsString(checkWildcard(wildcard)));
             }
             
+            String separator = FilenameUtils.separatorsToSystem("/");
+
             // если шаблон имени не задан в параметрах запроса, то проверяем все пути
             // во всех секциях настроек серверов 1С, из корня конфигурации агента,
             // а таже к каталогу агента
             //
             ConfigTests configTests = new ConfigTests();
             
-            File agentConfig = new File(server.getConfig());
-            configTests.agentPathTest = checkPath(agentConfig.getParent(), agentConfig.getName());
-        
+            File agentConfig = new File(server.getConfig()).getCanonicalFile();
+            String agentDir = agentConfig.getParentFile().getPath() + separator;
+            configTests.agentPathTest = checkPath(agentDir, agentConfig.getName());
+            configTests.agentPathTest.wildcard = configTests.agentPathTest.path;
+            
             ConfigurationManager configManager = new ConfigurationManager(server.getConfig());
             configManager.readConfiguration();
 
@@ -360,9 +368,12 @@ public class AccessibilityHandler extends DefaultResponder {
                                 }
                             }
                         }
-                        // проверка возможности изменить logcfg
-                        serverTests.logCfgPathTest = checkPath(oneCServer.getLogCfgPath(), "logcfg.xml");
-                        serverTests.logCfgPathTest.wildcard = oneCServer.getLogCfgPath();
+                        // проверка возможности изменить logcfg;
+                        // путь к logcfg может содержать в конце сам файл logcfg.xml - учтём это
+                        //
+                        String logCfgPath = FileUtil.pathWithoutEnding(oneCServer.getLogCfgPath(), LOGCFG_FILE_NAME);
+                        serverTests.logCfgPathTest = checkPath(logCfgPath, LOGCFG_FILE_NAME);
+                        serverTests.logCfgPathTest.wildcard = serverTests.logCfgPathTest.path;
 
                         configTests.servers.add(serverTests);
                     }
@@ -380,7 +391,7 @@ public class AccessibilityHandler extends DefaultResponder {
             return NanoHTTPD.newFixedLengthResponse(
                     NanoHTTPD.Response.Status.INTERNAL_ERROR,
                     NanoHTTPD.MIME_PLAINTEXT,
-                    ex.getMessage());
+                    StringUtil.toString(ex));
         }
     }
 

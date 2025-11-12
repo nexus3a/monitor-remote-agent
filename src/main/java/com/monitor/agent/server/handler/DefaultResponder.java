@@ -40,11 +40,13 @@ public abstract class DefaultResponder implements UriResponder {
 
     private Status status;
     private String message;
+    private String stackTrace;
     private RequestParameters parameters;
 
     public DefaultResponder() {
         status = Status.METHOD_NOT_ALLOWED;
         message = null;
+        stackTrace = null;
         parameters = null;
     }
 
@@ -57,7 +59,11 @@ public abstract class DefaultResponder implements UriResponder {
     }
 
     public void setException(Throwable exception) {
-        this.message = exception.getMessage();
+        stackTrace = StringUtil.toString(exception);
+        message = exception.getMessage();
+        if (message == null || message.isEmpty()) {
+            message = stackTrace;
+        }
     }
 
     public void setMessage(String message) {
@@ -69,6 +75,7 @@ public abstract class DefaultResponder implements UriResponder {
         model.put("status", status.getRequestStatus());
         model.put("description", status.getDescription());
         model.put("message", message == null ? "" : message);
+        model.put("stacktrace", stackTrace == null ? "" : stackTrace);
         ObjectMapper mapper = new ObjectMapper();
         try {
             return NanoHTTPD.newFixedLengthResponse(
@@ -80,10 +87,11 @@ public abstract class DefaultResponder implements UriResponder {
             return NanoHTTPD.newFixedLengthResponse(
                     status, 
                     "application/json", 
-                    String.format("{ \"status\":\"%s\", \"description\":\"%s\", \"message\":\"%s\" }", 
+                    String.format("{ \"status\":\"%s\", \"description\":\"%s\", \"message\":\"%s\", \"stacktrace\":\"%s\" }", 
                             status.getRequestStatus(),
                             status.getDescription(),
-                            "statusJson() error"));
+                            "statusJson() error",
+                            StringUtil.toString(ex)));
         }
     }
     

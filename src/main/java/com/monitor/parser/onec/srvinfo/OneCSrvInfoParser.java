@@ -89,7 +89,7 @@ public class OneCSrvInfoParser implements LogParser {
     
     // Key-Value Record - номера позиций файла с началом и окончанием 
     // ключа и значения для одной записи лога; предполагаем, что количество
-    // пар ключ-значение в одной записи не более 64
+    // пар ключ-значение в одной записи не более 256
     //
     private KeyValuesRecord kvrc = new KeyValuesRecord();
 
@@ -116,13 +116,13 @@ public class OneCSrvInfoParser implements LogParser {
     
     
     protected static class KeyValuesRecord {
-        private static final int MAX_RECORDS = 64;
+        private static final int MAX_RECORDS = 256;
         public final KeyValueBounds[] kv = new KeyValueBounds[MAX_RECORDS];
         public final OneCSrvInfoRecord lr = new OneCSrvInfoRecord();
         public long endsAt = 0;                           // позиция конца записи в файле
         public long startsAt = 0;                         // позиция начала записи в файле
         public boolean isEmpty = true;                    // содержит ли записи
-        public byte count = -1;                           // количество-1 прочитанных пар ключ-значение (длина kv - 1)
+        public int count = -1;                            // количество-1 прочитанных пар ключ-значение (длина kv - 1)
         public KeyValuesRecord() {
             for (int i = 0; i < kv.length; i++) kv[i] = new KeyValueBounds();
         }
@@ -297,7 +297,7 @@ public class OneCSrvInfoParser implements LogParser {
 
         OneCSrvInfoRecord logrec = kvrecord.lr;
         logrec.clear();
-        byte kvreclength = kvrecord.count;
+        int kvreclength = kvrecord.count;
         
         if (kvreclength < 3) {
             return;
@@ -334,13 +334,13 @@ public class OneCSrvInfoParser implements LogParser {
     
     
     private KeyValuesRecord fillValues(KeyValuesRecord kvrecord) throws IOException {
-        byte kvreclength = kvrecord.count;
+        int kvreclength = kvrecord.count;
 
         kvrecord.endsAt = filePos;
         kvrecord.isEmpty = (kvreclength == -1);
         
         Object vo;
-        for (byte kv = 0; kv <= kvreclength; kv++) {
+        for (int kv = 0; kv <= kvreclength; kv++) {
             
             KeyValueBounds kvi = kvrecord.kv[kv];
 

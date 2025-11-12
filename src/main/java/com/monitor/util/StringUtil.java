@@ -15,6 +15,8 @@
  */
 package com.monitor.util;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.charset.Charset;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -95,6 +97,15 @@ public class StringUtil {
     public static String getRidOfUnprintables(String str) {
         Matcher matcher = UNPRINTABLE_PATTERN.matcher(str);
         return matcher.replaceAll("?");
+    }
+    
+    
+    public static String toString(Throwable ex) {
+        StringWriter sw = new StringWriter();
+        try (PrintWriter pw = new PrintWriter(sw)) {
+            ex.printStackTrace(pw);
+        }
+        return sw.toString();
     }
 
     

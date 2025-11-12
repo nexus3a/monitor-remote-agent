@@ -75,13 +75,14 @@ public class OneCSrvInfo {
             String clusterCatalog = "reg_" + (String) cluster.get("port");
             
             File clusterInfoCatalog = new File(srvInfoCatalog, clusterCatalog);
+            String clusterInfoPath = clusterInfoCatalog.getCanonicalPath();
             if (!clusterInfoCatalog.exists() || !clusterInfoCatalog.isDirectory()) {
-                throw new IOException("\"" + catalog + "\" is not a directory or doesn't exists");
+                throw new IOException("\"" + clusterInfoPath + "\" is not a directory or doesn't exists");
             }
 
             File clusterInfo = new File(clusterInfoCatalog, "1CV8Clst.lst");
             if (!clusterInfo.exists() || !clusterInfo.isFile()) {
-                throw new IOException("can't find 1CV8Clst.lst in \"" + clusterCatalog + "\" directory");
+                throw new IOException("can't find 1CV8Clst.lst in \"" + clusterInfoPath + "\" directory");
             }
 
             OneCSrvInfoRecord clusterRecord = readRecord(new OneCClusterInfoParser(), clusterInfo, filter);

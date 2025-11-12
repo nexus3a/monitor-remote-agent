@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import org.apache.commons.io.FilenameUtils;
 
 /**
  *
@@ -87,5 +88,29 @@ public class FileUtil {
     }
     
     
-
+    public static String cutSeparator(String pathName) {
+        String separator = FilenameUtils.separatorsToSystem("/");
+        String path = FilenameUtils.separatorsToSystem(pathName);
+        return pathName.endsWith(separator) ? path.substring(0, path.length() - separator.length()) : path;
+    }
+    
+    
+    public static String terminateBySeparator(String pathName) {
+        String separator = FilenameUtils.separatorsToSystem("/");
+        String path = FilenameUtils.separatorsToSystem(pathName);
+        return path.endsWith(separator) ? path : (path + separator);
+    }
+    
+    
+    public static String pathWithoutEnding(String pathName, String ending) {
+        String separator = FilenameUtils.separatorsToSystem("/");
+        String path = FilenameUtils.separatorsToSystem(pathName);
+        String rest = ending.toLowerCase();
+        if (path.toLowerCase().endsWith(separator + rest)) {
+            path = path.substring(0, path.length() - rest.length() - 1);
+        }
+        return terminateBySeparator(path);
+    }
+    
+    
 }
