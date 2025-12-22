@@ -260,7 +260,7 @@ public class OneCRLParser implements LogParser {
         String hexOffset = tdata.substring(c + 1, tdata.length() - 1);
         prevTid = String.format("%s (%d)",
                 DATE_FORMAT.format(new Date((Long.parseLong(hexDate, 16) / 10) - TIME_BASE)),
-                Integer.parseInt(hexOffset, 16));
+                Long.parseLong(hexOffset, 16));
         return prevTid;
     }
     
@@ -659,7 +659,7 @@ public class OneCRLParser implements LogParser {
         byte bytesInSym = 1;                       // количество байтов в прочитанном UTF-8 символе
 
         KeyValueBounds kvc = new KeyValueBounds(); // текущая пара ключ-значение
-    
+        
         do {
             firstBytePos = filePos;
             icc = stream.bread(); filePos++;
