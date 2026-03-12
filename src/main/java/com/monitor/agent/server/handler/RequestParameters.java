@@ -18,10 +18,12 @@ package com.monitor.agent.server.handler;
 */
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,17 +38,37 @@ public class RequestParameters {
         this.contentParameters = null;
     }
     
-    public byte[] contentOf(IHTTPSession session) throws IOException {
+    public byte[] contentOf(IHTTPSession session) throws IOException, NanoHTTPD.ResponseException {
         if (session.getMethod() == Method.GET) {
             return new byte[0];
         }
+        
+        // некрасивый фрагмент кода - добавляем в коллекцию сессионных параметров
+        // данные о теле POST-запроса; эта коллекция, по идее, должна быть неизменной,
+        // но другого способа обращения к прочитанному ранее телу POST я не нашёл,
+        // а перечитывать из потока каждый раз нельзя, так как поток закрыватеся (?)
+        // после первого прочтения
+        //
+        String postContentKey = "_post_body";
+        Map<String, List<String>> sessionParameters = session.getParameters();
+        if (sessionParameters.containsKey(postContentKey)) {
+            return sessionParameters.get(postContentKey).get(0).getBytes();
+        }
+
         int contentLength = Integer.parseInt(session.getHeaders().get("content-length"));
         byte[] content = new byte[contentLength];
         InputStream input = session.getInputStream();
         int bytesRead = 0;
         while (bytesRead < contentLength) {
-            bytesRead += input.read(content, bytesRead, contentLength - bytesRead);
+            int nread = input.read(content, bytesRead, contentLength - bytesRead);
+            if (nread == -1) {
+                throw new IOException("Connection closed before reading full body: expected "
+                        + contentLength + " bytes, got " + bytesRead);
+            }
+            bytesRead += nread;
         }
+        
+        sessionParameters.put(postContentKey, Collections.singletonList(new String(content)));
         return content;
     }
     
@@ -54,7 +76,7 @@ public class RequestParameters {
     // параметрах запроса; ожидается, что параметры в теле представляют собой
     // json с именами свойств, равными именам параметров get-запроса
     //
-    public Map<String, Object> contentParameters(IHTTPSession session) throws IOException {
+    private Map<String, Object> contentParameters(IHTTPSession session) throws IOException, NanoHTTPD.ResponseException {
         Map<String, Object> parameters = null;
         byte[] content = contentOf(session);
         if (content.length > 0) {
@@ -71,7 +93,7 @@ public class RequestParameters {
     // значение параметра из url; если это post-запрос, то считается, что параметры
     // преданы в виде json и возвращается значение соответствующего свойства json
     //
-    public Object get(String key, Object defValue) throws IOException {
+    public Object get(String key, Object defValue) throws IOException, NanoHTTPD.ResponseException {
         Map<String, List<String>> sessionParameters = session.getParameters();
         if (sessionParameters.containsKey(key)) {
             return sessionParameters.get(key).get(0);

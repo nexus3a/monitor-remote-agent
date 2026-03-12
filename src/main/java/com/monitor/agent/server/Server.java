@@ -67,9 +67,10 @@ import org.slf4j.LoggerFactory;
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.9.6";
+    private static final String AGENT_VERSION = "2.9.10";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
     public  static final String SERVER_JKS_PASSWORD = "monitor";
+    private static final int SOCKET_READ_TIMEOUT = 20_000;
 
     private RouterNanoHTTPD httpd;
     private ThreadPoolExecutor executor;
@@ -159,7 +160,7 @@ public class Server {
         if (secure) {
             httpd.makeSecure(getSslServerSocketFactory("monitor-remote-agent.jks", "monitor"), null);
         }
-        httpd.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        httpd.start(SOCKET_READ_TIMEOUT, false);
         executor = (ThreadPoolExecutor) Executors.newCachedThreadPool();
         logger.info("server started");
     }

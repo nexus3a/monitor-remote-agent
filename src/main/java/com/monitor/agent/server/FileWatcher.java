@@ -146,8 +146,8 @@ public class FileWatcher {
             logger.trace("-- Size : {}", state.getSize());
             logger.trace("-- Directory : {}", state.getDirectory());
             logger.trace("-- Filename : {}", state.getFileName());
-            logger.trace("-- Pointer : {}", state.getPointer());
-            logger.trace("-- New pointer : {}", state.getNewPointer());
+        //  logger.trace("-- Pointer : {}", state.getPointer());         // .getPointer() === 0
+        //  logger.trace("-- New pointer : {}", state.getNewPointer());  // .getNewPointer() === 0
 
             // A -> A(time, size+) +
             // A -> A(time, size-)        rename?

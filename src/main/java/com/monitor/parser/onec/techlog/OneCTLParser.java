@@ -220,6 +220,8 @@ public class OneCTLParser implements LogParser {
     private final static String LOCK_SPACE_RECORDS_COUNT_PROP_NAME = "recordsCount";
     private final static String LOCK_GRANULARITY_PROP_NAME = "granularity";
     
+    private final static String BOOKMARK_PROP_NAME = "bm";
+    
     private final static String[] EMPTY_STRING_ARRAY = new String[0];
 
     private String syear, smonth, sday, shours, sminutes, sseconds, yyyyMMddhh;
@@ -301,6 +303,7 @@ public class OneCTLParser implements LogParser {
     private static class KeyValuesRecord {
         public final KeyValueBounds[] kv = new KeyValueBounds[64];
         public final OneCTLRecord lr = new OneCTLRecord();
+        public long bytesFrom = 0;                           // поизиция начала записи в файле
         public long bytesRead = 0;                           // поизиция конца записи в файле
         public boolean isReadyToStore = false;               // готова к помещению в хранилище?
         public boolean isContext = false;                    // event == Context?
@@ -316,6 +319,7 @@ public class OneCTLParser implements LogParser {
         public void clear() {
             lck = new Lock();
             lr.clear();
+            bytesFrom = 0;
             bytesRead = 0;
             isReadyToStore = isContext = false;
             isEmpty = true;
@@ -1007,6 +1011,8 @@ public class OneCTLParser implements LogParser {
         logrec.put(LEVEL_PROP_NAME, eventLevel);
         logrec.put(PID_PROP_NAME, pid);
         
+        logrec.put(BOOKMARK_PROP_NAME, kvrc.bytesFrom);
+        
         if (DEBUG_RECORDS) {
             System.out.println(DATE_TIME_PROP_NAME + "=" + logrec.get(DATE_TIME_PROP_NAME));
             System.out.println(ONLY_TIME_PROP_NAME + "=" + logrec.get(ONLY_TIME_PROP_NAME));
@@ -1193,6 +1199,7 @@ public class OneCTLParser implements LogParser {
                     kvrp.lr.put(CONTEXT_HASH_PROP_NAME, logrec.get(CONTEXT_HASH_PROP_NAME));
                     kvrp.lr.put(CONTEXT_LAST_LINE_PROP_NAME, logrec.get(CONTEXT_LAST_LINE_PROP_NAME));
                     kvrp.lr.put(CONTEXT_LAST_LINE_HASH_PROP_NAME, logrec.get(CONTEXT_LAST_LINE_HASH_PROP_NAME));
+                    kvrp.bytesFrom = kvrc.bytesFrom;
                     kvrp.bytesRead = kvrc.bytesRead;
                     kvrp.isReadyToStore = true;
                 }
@@ -1226,6 +1233,8 @@ public class OneCTLParser implements LogParser {
             }
         }
         
+        kvrc.bytesFrom = fp - 1; // kvrc готова к считыванию следующих данных
+
         return continueParsing;
     }
     
@@ -1310,7 +1319,9 @@ public class OneCTLParser implements LogParser {
         kvrc.clear();
 
         long fromPosition = stream.getFilePointer();
+        kvrp.bytesFrom = fromPosition;
         kvrp.bytesRead = fromPosition;
+        kvrc.bytesFrom = fromPosition;
         kvrc.bytesRead = fromPosition;
         startPos = fromPosition;
         filePos = fromPosition;

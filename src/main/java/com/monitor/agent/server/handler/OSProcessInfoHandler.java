@@ -67,7 +67,7 @@ public class OSProcessInfoHandler extends DefaultResponder {
                     mapper.writerWithDefaultPrettyPrinter().writeValueAsString(result));
         
         }
-        catch (IOException | InterruptedException ex) {
+        catch (IOException | InterruptedException | NanoHTTPD.ResponseException ex) {
             setStatus(Response.Status.INTERNAL_ERROR);
             setException(ex);
             return super.get(uriResource, urlParams, session);

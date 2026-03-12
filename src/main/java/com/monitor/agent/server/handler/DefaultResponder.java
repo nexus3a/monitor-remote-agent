@@ -110,7 +110,7 @@ public abstract class DefaultResponder implements UriResponder {
         try {
             section = (String) parameters.get("section", "");
         }
-        catch (IOException ex) {
+        catch (IOException | NanoHTTPD.ResponseException ex) {
             section = "";
         }
         String uri = session.getUri();
@@ -120,7 +120,7 @@ public abstract class DefaultResponder implements UriResponder {
                 section.isEmpty() ? "" : "?section=" + section);
     }
     
-    public boolean checkToken(RouterNanoHTTPD.UriResource uriResource) throws IOException {
+    public boolean checkToken(RouterNanoHTTPD.UriResource uriResource) throws IOException, NanoHTTPD.ResponseException {
         Server server = uriResource.initParameter(Server.class);
         if (server == null) {
             return true;

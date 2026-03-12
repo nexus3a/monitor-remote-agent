@@ -83,7 +83,7 @@ public class ParserFileReader {
         }
         if (!draft) {
             for (Entry<FileState, Long> entry : pointerMap.entrySet()) {
-                entry.getKey().setNewPointer(entry.getValue().longValue());
+                entry.getKey().setNewPointer(entry.getValue());
             }
             
 //          for (FileState state : fileList) {

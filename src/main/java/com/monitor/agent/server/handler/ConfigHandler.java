@@ -25,8 +25,12 @@ import fi.iki.elonen.router.RouterNanoHTTPD;
 import com.monitor.agent.server.config.Configuration;
 import com.monitor.agent.server.config.ConfigurationManager;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ConfigHandler extends DefaultResponder {
+
+    private static final Logger logger = LoggerFactory.getLogger(ConfigHandler.class);
 
     @Override
     @SuppressWarnings("UseSpecificCatch")
