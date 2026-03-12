@@ -26,48 +26,25 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.router.RouterNanoHTTPD;
 
-import com.monitor.agent.server.config.ConfigurationManager;
-import com.monitor.agent.server.config.FilesConfig;
-import com.monitor.agent.server.config.OneCServerConfig;
+import com.monitor.agent.server.config.*;
 import com.monitor.agent.server.handler.*;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.ProtocolException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.*;
+import java.net.*;
+import java.nio.file.*;
 import java.security.KeyStore;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLServerSocketFactory;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.locks.*;
+import javax.net.ssl.*;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.cli.*;
+import org.slf4j.*;
 
 public class Server {
 
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
-    private static final String AGENT_VERSION = "2.9.10";
+    private static final String AGENT_VERSION = "2.9.11";
     public  static final String SERVER_JKS_NAME = "monitor-remote-agent.jks";
     public  static final String SERVER_JKS_PASSWORD = "monitor";
     private static final int SOCKET_READ_TIMEOUT = 20_000;
@@ -124,9 +101,121 @@ public class Server {
         this.serverLog = new ServerLog();
     }
     
-    private void startServer() throws IOException, Exception {
-        new File(TextDB.SINCEDB_CAT).mkdir();
+    private boolean checkSelfAcessibility() {
+        final File sincedb = new File(TextDB.SINCEDB_CAT);
+        if (!sincedb.exists()) {
+            if (!sincedb.mkdir()) {
+                String message = 
+                        "'sincedb' catalog wasn't created.\n"
+                        + "Check write permissions in '" 
+                        + sincedb.getAbsolutePath()
+                        + "' directory and restart service.";
+                logger.info(message);
+                System.out.println(message);
+                return false;
+            }
+        }
+        else if (!sincedb.isDirectory()) {
+            String message = 
+                    "'sincedb' is not a directory.\n"
+                    + "Delete file '" 
+                    + sincedb.getAbsolutePath()
+                    + "' and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
         
+        // проверяем возможность записи файлов в sincedb
+        //
+        boolean testCreated = false;
+        Exception exc = null;
+        File test = new File(sincedb, "access.test");
+        test.delete();
+        if (test.exists()) {
+            String message = 
+                    "Can't delete file(s) in '"
+                    + sincedb.getAbsolutePath()
+                    + "' directory.\n"
+                    + "Check write permissions and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
+        try {
+            testCreated = test.createNewFile();
+        }
+        catch (IOException ex) {
+            exc = ex;
+        }
+        if (exc != null || !testCreated) {
+            String message = 
+                    "Can't create file(s) in '"
+                    + sincedb.getAbsolutePath()
+                    + "' directory.\n"
+                    + "Check write permissions and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
+        
+        // проверяем возможность записи в файлы внутри sincedb
+        //
+        try (OutputStream out = new FileOutputStream(test)) {
+            out.write('0');
+            out.flush();
+        }
+        catch (Exception ex) {
+            String message = 
+                    "Can't write into file(s) in '"
+                    + sincedb.getAbsolutePath()
+                    + "' directory.\n"
+                    + "Check read/write permissions and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
+        
+        // проверяем возможность чтения из файлов внутри sincedb
+        //
+        try (InputStream in = new FileInputStream(test)) {
+            int sym = in.read();
+            if (sym != '0') throw new Exception();
+        }
+        catch (Exception ex) {
+            String message = 
+                    "Can't read from file(s) in '"
+                    + sincedb.getAbsolutePath()
+                    + "' directory.\n"
+                    + "Check read permissions and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
+        
+        // проверяем возможность удаления файлов внутри sincedb
+        //
+        test.delete();
+        if (test.exists()) {
+            String message = 
+                    "Can't delete file(s) in '"
+                    + sincedb.getAbsolutePath()
+                    + "' directory.\n"
+                    + "Check write permissions and restart service.";
+            logger.info(message);
+            System.out.println(message);
+            return false;
+        }
+        
+        return true;
+    }
+    
+    private void startServer() throws IOException, Exception {
+        if (!checkSelfAcessibility()) {
+            logger.info("exit code == 5");
+            System.exit(5);
+        }
+            
         httpd = new RouterNanoHTTPD(port);
         
         httpd.addRoute("/", RootHandler.class, this);
